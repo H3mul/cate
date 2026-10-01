@@ -9,17 +9,35 @@ on:
     types: [checks_requested]
 
 jobs:
+  # Build + typecheck + test on every event; on pushes to main the same job then
+  # packages UNSIGNED installers from that single build (no second npm ci /
+  # npm run build) and hands them to the `prerelease` job.
+  #
+  # Only Windows runs for now — the other platforms are commented out below to
+  # keep CI fast. Re-enable one by uncommenting its matrix entry.
   build:
+    name: build (${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        include:
+          # - os: macos-latest
+          #   platform: mac
+          # - os: ubuntu-latest
+          #   platform: linux
+          #   docker: true # runtime tarball is built in the pinned old-glibc image
+          #   package: true
+          - os: windows-latest
+            platform: win
+            package: true
 
     runs-on: ${{ matrix.os }}
     # Without this, a hung step (e.g. a test leaving a child process that holds
     # the step's stdout pipe open) runs until GitHub's 6-hour default. Bound it
     # so CI fails fast and surfaces the culprit instead of hanging for hours.
-    timeout-minutes: 30
+    timeout-minutes: 45
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@v7
@@ -27,6 +45,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 22.22.2
+          cache: npm
 
       - uses: actions/setup-python@v7
         with:
@@ -49,6 +68,14 @@ jobs:
         if: runner.os == 'Linux'
         run: npm run test:runtime:linux-glibc
 
+      # Packaging inputs that must exist BEFORE the one app build: icons, and the
+      # embedded runtime version kept in step with package.json (see release.yml).
+      - name: Generate icons + sync runtime version
+        if: github.event_name == 'push' && matrix.package
+        run: |
+          npm run icons
+          npm run build:runtime
+
       - name: Build
         run: npm run build
         env:
@@ -63,69 +90,21 @@ jobs:
       # E2E and Electron smoke tests run locally only. Keep the npm scripts
       # available for browser, T3, SSH loopback, and full-app validation.
 
-  # ---------------------------------------------------------------------------
-  # Test builds: after every push to main, build UNSIGNED Linux + Windows
-  # binaries and publish them to the rolling "CI" pre-release (tag `ci`). Not
-  # run for pull_request / merge_group, so fork PRs never need a write token.
-  #
-  # Deliberately uses NO repository secrets: no signing certs, no Apple
-  # credentials, no passkey profile. The only credential is the workflow's
-  # built-in GITHUB_TOKEN, scoped to this repository (whichever fork/org runs it).
-  # ---------------------------------------------------------------------------
-  package:
-    name: package (${{ matrix.platform }})
-    if: github.event_name == 'push'
-    needs: build
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            platform: linux
-            docker: true
-          - os: windows-latest
-            platform: win
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    permissions:
-      contents: read
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22.22.2
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
-      - name: Install setuptools (needed by node-gyp)
-        run: pip install setuptools
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Generate icons
-        run: npm run icons
-
-      # Keeps the embedded runtime version in step with package.json (see
-      # release.yml for why).
-      - name: Sync runtime version to package.json
-        run: npm run build:runtime
-
-      - name: Build app
-        run: npm run build
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
-
+      # -----------------------------------------------------------------------
+      # Test builds (push to main only, after tests pass). Never runs for
+      # pull_request / merge_group, so fork PRs never need a write token.
+      #
+      # Deliberately uses NO repository secrets: no signing certs, no Apple
+      # credentials, no passkey profile. The only credential is the workflow's
+      # built-in GITHUB_TOKEN, used by the `prerelease` job.
+      # -----------------------------------------------------------------------
       - name: Compile node-pty from source (Windows; Linux builds it at install)
-        if: runner.os != 'Linux'
+        if: github.event_name == 'push' && matrix.package && runner.os != 'Linux'
         run: npm rebuild node-pty --build-from-source
 
       # The installer ships the host runtime daemon tarball (extraResources).
       - name: Build + stage host runtime tarball
+        if: github.event_name == 'push' && matrix.package
         shell: bash
         run: |
           node scripts/build-runtime-tarball.mjs ${{ matrix.docker && '--docker' || '' }}
@@ -133,7 +112,9 @@ jobs:
 
       # CSC_IDENTITY_AUTO_DISCOVERY=false and no CSC_LINK: never sign, never
       # look for a certificate. --publish never: nothing is pushed by the builder.
+      # Reuses the build output above instead of rebuilding.
       - name: Package (unsigned)
+        if: github.event_name == 'push' && matrix.package
         shell: bash
         run: npx electron-builder --${{ matrix.platform }} --publish never
         env:
@@ -144,6 +125,7 @@ jobs:
       # Updater metadata (latest*.yml) and blockmaps are NOT uploaded, so
       # installed apps that follow pre-releases can never auto-update to a CI build.
       - name: Collect assets
+        if: github.event_name == 'push' && matrix.package
         shell: bash
         run: |
           short="${GITHUB_SHA::7}"
@@ -161,6 +143,7 @@ jobs:
           [ -n "$(ls -A ci-assets)" ] || { echo "No assets produced"; exit 1; }
 
       - uses: actions/upload-artifact@v7
+        if: github.event_name == 'push' && matrix.package
         with:
           name: ci-assets-${{ matrix.platform }}
           path: ci-assets/*
@@ -170,7 +153,7 @@ jobs:
   prerelease:
     name: publish CI pre-release
     if: github.event_name == 'push'
-    needs: package
+    needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
