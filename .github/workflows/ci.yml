@@ -62,3 +62,155 @@ jobs:
 
       # E2E and Electron smoke tests run locally only. Keep the npm scripts
       # available for browser, T3, SSH loopback, and full-app validation.
+
+  # ---------------------------------------------------------------------------
+  # Test builds: after every push to main, build UNSIGNED Linux + Windows
+  # binaries and publish them to the rolling "CI" pre-release (tag `ci`). Not
+  # run for pull_request / merge_group, so fork PRs never need a write token.
+  #
+  # Deliberately uses NO repository secrets: no signing certs, no Apple
+  # credentials, no passkey profile. The only credential is the workflow's
+  # built-in GITHUB_TOKEN, scoped to this repository (whichever fork/org runs it).
+  # ---------------------------------------------------------------------------
+  package:
+    name: package (${{ matrix.platform }})
+    if: github.event_name == 'push'
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            platform: linux
+            docker: true
+          - os: windows-latest
+            platform: win
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.22.2
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install setuptools (needed by node-gyp)
+        run: pip install setuptools
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate icons
+        run: npm run icons
+
+      # Keeps the embedded runtime version in step with package.json (see
+      # release.yml for why).
+      - name: Sync runtime version to package.json
+        run: npm run build:runtime
+
+      - name: Build app
+        run: npm run build
+        env:
+          NODE_OPTIONS: --max-old-space-size=4096
+
+      - name: Compile node-pty from source (Windows; Linux builds it at install)
+        if: runner.os != 'Linux'
+        run: npm rebuild node-pty --build-from-source
+
+      # The installer ships the host runtime daemon tarball (extraResources).
+      - name: Build + stage host runtime tarball
+        shell: bash
+        run: |
+          node scripts/build-runtime-tarball.mjs ${{ matrix.docker && '--docker' || '' }}
+          cp dist-runtime/cate-runtime-*.tgz dist-runtime/runtime-host.tgz
+
+      # CSC_IDENTITY_AUTO_DISCOVERY=false and no CSC_LINK: never sign, never
+      # look for a certificate. --publish never: nothing is pushed by the builder.
+      - name: Package (unsigned)
+        shell: bash
+        run: npx electron-builder --${{ matrix.platform }} --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      # Name each asset after the commit it was built from:
+      #   Cate-ci-<shorthash>-<platform>.<ext>
+      # Updater metadata (latest*.yml) and blockmaps are NOT uploaded, so
+      # installed apps that follow pre-releases can never auto-update to a CI build.
+      - name: Collect assets
+        shell: bash
+        run: |
+          short="${GITHUB_SHA::7}"
+          mkdir -p ci-assets
+          for f in release/*; do
+            [ -f "$f" ] || continue
+            case "$f" in
+              *.yml|*.yaml|*.blockmap) continue ;;
+              *.tar.gz) ext="tar.gz" ;;
+              *) ext="${f##*.}" ;;
+            esac
+            cp "$f" "ci-assets/Cate-ci-${short}-${{ matrix.platform }}.${ext}"
+          done
+          ls -l ci-assets
+          [ -n "$(ls -A ci-assets)" ] || { echo "No assets produced"; exit 1; }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ci-assets-${{ matrix.platform }}
+          path: ci-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  prerelease:
+    name: publish CI pre-release
+    if: github.event_name == 'push'
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # move the `ci` tag, edit the release, delete/upload assets
+      actions: read # download this run's artifacts
+    # One publisher at a time so overlapping runs cannot interleave their
+    # delete-old / upload-new steps. Queued runs are not cancelled.
+    concurrency:
+      group: ci-prerelease
+      cancel-in-progress: false
+
+    steps:
+      - name: Download built assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh run download "${{ github.run_id }}" --repo "${{ github.repository }}" --pattern 'ci-assets-*' --dir assets
+
+      - name: Update the CI pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          short="${GITHUB_SHA::7}"
+          notes="Automated test build of ${GITHUB_SHA} (${short}). Unsigned; replaced on every push to main. Not for production use."
+
+          # Point the rolling `ci` tag at this commit (create it on first run).
+          if gh api "repos/$REPO/git/ref/tags/ci" > /dev/null 2>&1; then
+            gh api -X PATCH "repos/$REPO/git/refs/tags/ci" -f sha="$GITHUB_SHA" -F force=true > /dev/null
+          else
+            gh api -X POST "repos/$REPO/git/refs" -f ref=refs/tags/ci -f sha="$GITHUB_SHA" > /dev/null
+          fi
+
+          if gh release view ci --repo "$REPO" > /dev/null 2>&1; then
+            gh release edit ci --repo "$REPO" --title "CI" --notes "$notes" --prerelease --latest=false
+          else
+            gh release create ci --repo "$REPO" --title "CI" --notes "$notes" --prerelease --latest=false --verify-tag
+          fi
+
+          # Delete the previous build's assets, then upload the fresh ones.
+          gh release view ci --repo "$REPO" --json assets --jq '.assets[].name' | while IFS= read -r name; do
+            gh release delete-asset ci "$name" --repo "$REPO" --yes
+          done
+          gh release upload ci assets/*/* --repo "$REPO" --clobber
