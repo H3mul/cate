@@ -116,7 +116,7 @@ export async function commitDrop(
       }
       const dockTarget: DockDropTarget =
         target.kind === 'dock-tab'
-          ? { type: 'tab', stackId: target.stackId }
+          ? { type: 'tab', stackId: target.stackId, index: target.index }
           : { type: 'split', stackId: target.stackId, edge: target.edge }
       ctx.prepareLocalRemount?.(source.panelId, panel.type)
       removeFromSource(source)

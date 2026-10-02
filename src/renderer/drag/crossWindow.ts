@@ -89,7 +89,7 @@ function runRemoteEffects(active: ActiveRemote, state: RuntimeState): void {
           // route drop to the resolved DockStore so canvas-node mini-dock targets land in the right tree
           remoteTarget = {
             kind: 'dock',
-            target: { type: 'tab', stackId: target.stackId },
+            target: { type: 'tab', stackId: target.stackId, index: target.index },
             dockStoreApi: target.dockStoreApi,
           }
         } else if (target.kind === 'dock-split') {

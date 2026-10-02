@@ -7,7 +7,8 @@ export function layoutMinimum(node: DockLayoutNode, getPanelType?: (id: string) 
   if (node.type === 'tabs') {
     return node.panelIds.reduce((minimum, id) => {
       const type = getPanelType?.(id)
-      const panelMinimum = type ? PANEL_MINIMUM_SIZES[type] : MIN_PANE_SIZE
+      // Unknown types (a panel persisted by a newer/other branch) fall back too.
+      const panelMinimum = (type && PANEL_MINIMUM_SIZES[type]) || MIN_PANE_SIZE
       return {
         width: Math.max(minimum.width, panelMinimum.width),
         height: Math.max(minimum.height, panelMinimum.height),

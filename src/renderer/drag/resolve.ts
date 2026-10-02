@@ -53,6 +53,9 @@ export interface DropEnvironment {
     dockStoreApi: unknown,
     sourceNodeId: string | undefined,
   ): { nodeId: string; canvasStoreApi: StoreApi<CanvasStore> } | null
+  /** Where a tab dropped at `clientX` would land among `stackId`'s tabs, not
+   *  counting `excludePanelId` (the dragged tab). Undefined when unknown. */
+  tabInsertIndex?(stackId: string, clientX: number, excludePanelId: string): number | undefined
 }
 
 /** Default DropEnvironment that reads from the real DOM + global registries. */
@@ -76,6 +79,23 @@ const defaultDropEnvironment: DropEnvironment = {
     const canvasStoreApi = getDefaultSession().getCanvasStoreForNode(nodeId)
     if (!canvasStoreApi) return null
     return { nodeId, canvasStoreApi }
+  },
+  tabInsertIndex(stackId, clientX, excludePanelId) {
+    const stackEl = Array.from(document.querySelectorAll<HTMLElement>('[data-dock-stack-id]'))
+      .find((el) => el.dataset.dockStackId === stackId)
+    // Only this stack's own tab bar — a nested container's stacks carry their own pills.
+    const pills = stackEl?.querySelectorAll<HTMLElement>(':scope > .dock-tab-bar [data-tab-panel-id]')
+    if (!pills) return undefined
+    let index = 0
+    for (const pill of pills) {
+      if (pill.dataset.tabPanelId === excludePanelId) continue
+      const rect = pill.getBoundingClientRect()
+      // Compared against where pills are drawn right now (shifted by the drop
+      // placeholder), which makes the boundary self-stabilising: a pill that
+      // moves away from the cursor can't flip the slot back.
+      if (clientX > rect.left + rect.width / 2) index++
+    }
+    return index
   },
 }
 
@@ -199,7 +219,12 @@ function resolveDockHit(
       if (lonePanel && edge !== 'center') return null
     }
     if (edge === 'center') {
-      return { kind: 'dock-tab', dockStoreApi: targetStore, stackId: best.entry.stackId }
+      return {
+        kind: 'dock-tab',
+        dockStoreApi: targetStore,
+        stackId: best.entry.stackId,
+        index: env.tabInsertIndex?.(best.entry.stackId, client.x, source.panelId),
+      }
     }
     return {
       kind: 'dock-split',

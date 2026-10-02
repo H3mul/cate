@@ -96,7 +96,9 @@ export type DropTarget =
       stackId: string
       edge: 'top' | 'bottom' | 'left' | 'right'
     }
-  | { kind: 'dock-tab'; dockStoreApi: StoreApi<DockStore>; stackId: string }
+  /** `index` = slot among the stack's tabs once the dragged panel is removed
+   *  (undefined → append). */
+  | { kind: 'dock-tab'; dockStoreApi: StoreApi<DockStore>; stackId: string; index?: number }
   | { kind: 'dock-zone'; dockStoreApi: StoreApi<DockStore>; zone: DockZonePosition }
   | { kind: 'detach'; screen: Point }
 
