@@ -186,6 +186,15 @@ describe('resolveDrop — dock zones', () => {
     expect(t).toEqual({ kind: 'dock-tab', dockStoreApi: DOCK_STORE, stackId: 'stack-1' })
   })
 
+  it('dock-tab carries the insertion index reported by the environment', () => {
+    const t = resolveDropT(
+      { client: { x: 250, y: 10 }, screen: { x: 250, y: 10 }, insideWindow: true },
+      NODE_SOURCE_A, grab, ghostSize, 'editor',
+      { ...env({ zones: [stackEntry] }), tabInsertIndex: (stackId, x, excluded) => (stackId === 'stack-1' && x === 250 && excluded === 'panel-A' ? 2 : undefined) },
+    )
+    expect(t).toEqual({ kind: 'dock-tab', dockStoreApi: DOCK_STORE, stackId: 'stack-1', index: 2 })
+  })
+
   it('top edge band (below tab-bar) → dock-split top', () => {
     const t = dropAt({ x: 250, y: 40 })
     expect(t).toEqual({

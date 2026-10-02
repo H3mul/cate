@@ -151,10 +151,11 @@ export interface DockTabBarProps {
   // Empty-area handlers (host-supplied)
   onEmptyMouseDown?: (e: React.MouseEvent) => void
   onEmptyContextMenu?: (e: React.MouseEvent) => void
-  // New-tab drop placeholder
+  // Drop placeholder, slotted at `dropIndex` among the tabs that remain once
+  // the dragged one is lifted out (undefined → end). Tabs shift apart around it.
   showTabPlaceholder: boolean
-  // When the drag source is THIS stack, hide the dragged tab from layout
-  // and inline the placeholder at its original (clamped) index.
+  dropIndex?: number
+  // When the drag source is THIS stack, hide the dragged tab from layout.
   selfTabDrag?: { draggedPanelId: string; originalIndex: number } | null
   newTabControl?: React.ReactNode
   // For the trailing draggable spacer in detached windows.
@@ -168,28 +169,25 @@ export function DockTabBar(props: DockTabBarProps) {
     renameId, renameValue, renameInputRef, setRenameValue, setRenameId, commitRename,
     springLoadTimer, setActiveTab,
     onEmptyMouseDown, onEmptyContextMenu,
-    showTabPlaceholder, selfTabDrag, onTabBarMouseDown, newTabControl,
+    showTabPlaceholder, dropIndex, selfTabDrag, onTabBarMouseDown, newTabControl,
   } = props
+  const dragTitle = useDragStore((s) => s.panel?.title)
 
   const worktreeColorByPanel = useWorktreeColorByPanel()
   const agentInfoByPanel = useAgentInfoByPanel(workspaceId)
 
-  // Build the visible tab list (skip the in-flight tab when source === this
-  // stack) and choose where to slot the placeholder. Clamp to >=1 so a
-  // leading-tab drag lets the next tab fill index 0 with the placeholder
-  // at index 1 (per the requested "tabs always move right" behaviour).
+  // Visible tab list: the in-flight tab is lifted out when its source is this
+  // stack, and the placeholder takes the slot under the cursor.
   const remainingPanelIds = selfTabDrag
     ? stack.panelIds.filter((id) => id !== selfTabDrag.draggedPanelId)
     : stack.panelIds
-  const placeholderInsertAt = selfTabDrag
-    ? Math.min(Math.max(selfTabDrag.originalIndex, 1), remainingPanelIds.length)
-    : remainingPanelIds.length
+  const placeholderInsertAt = Math.min(Math.max(dropIndex ?? remainingPanelIds.length, 0), remainingPanelIds.length)
 
   const placeholderNode = showTabPlaceholder ? (
     <div
       key="__tab-placeholder__"
       aria-hidden
-      className={`flex flex-shrink-0 items-center justify-center whitespace-nowrap select-none rounded-[10px] ${compact ? 'h-[22px] px-2 text-[11px]' : 'h-6 px-3 text-[12px]'}`}
+      className={`flex flex-shrink-0 items-center justify-center whitespace-nowrap select-none truncate rounded-[10px] ${compact ? 'h-[22px] px-2 text-[11px]' : 'h-6 px-3 text-[12px]'}`}
       style={{
         minWidth: 100,
         color: 'var(--focus-blue, #3b82f6)',
@@ -198,7 +196,7 @@ export function DockTabBar(props: DockTabBarProps) {
         borderRadius: 10,
       }}
     >
-      + new tab
+      {dragTitle || '+ new tab'}
     </div>
   ) : null
 

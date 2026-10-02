@@ -215,9 +215,8 @@ export default function DockTabStack({ stack, zone: zoneProp, renderPanel, getPa
     target?.kind === 'dock-tab' &&
     target.stackId === stack.id
 
-  // When the dragged tab originates from THIS stack, hide it from the strip
-  // and slot the placeholder at its original index (clamped so a leading
-  // drag still leaves the next tab in front of the placeholder).
+  // When the dragged tab originates from THIS stack, lift it out of the strip
+  // (the placeholder takes the slot under the cursor).
   const selfTabDrag = useMemo(() => {
     if (!showTabPlaceholder) return null
     if (!dragSource || dragSource.origin.kind !== 'dock-tab') return null
@@ -324,6 +323,7 @@ export default function DockTabStack({ stack, zone: zoneProp, renderPanel, getPa
           onEmptyMouseDown={(e) => onTabBarMouseDown?.(e)}
           onEmptyContextMenu={onEmptyContextMenu}
           showTabPlaceholder={showTabPlaceholder}
+          dropIndex={target?.kind === 'dock-tab' ? target.index : undefined}
           selfTabDrag={selfTabDrag}
           onTabBarMouseDown={onTabBarMouseDown}
           newTabControl={newTabControl ?? <NewTabButton canvasAttached={localOnly} compact={compact} items={visibleSplitItems} onPick={actions.addTabOfType} />}

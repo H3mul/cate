@@ -44,3 +44,8 @@ it('honors every panel type minimum, including inactive tabs in a mixed stack', 
   expect(layoutMinimum({ type: 'tabs', id: 'mixed', panelIds: ['terminal', 'browser', 'agent'], activeIndex: 0 },
     id => id as 'terminal' | 'browser' | 'agent')).toEqual({ width: 400, height: 320 })
 })
+
+it('layoutMinimum falls back to the default pane minimum for an unknown panel type', () => {
+  const layout: DockLayoutNode = { type: 'tabs', id: 's', panelIds: ['x'], activeIndex: 0 }
+  expect(layoutMinimum(layout, () => 'from-a-newer-branch' as never)).toEqual({ width: 320, height: 220 })
+})
