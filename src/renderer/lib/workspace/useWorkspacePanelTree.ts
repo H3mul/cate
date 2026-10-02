@@ -10,7 +10,7 @@
 // or where they are.
 // =============================================================================
 
-import { useMemo, useState, useCallback, useEffect } from 'react'
+import { useMemo, useState, useCallback, useEffect, useSyncExternalStore } from 'react'
 import { useShallow } from 'zustand/shallow'
 import type { PanelState } from '../../../shared/types'
 import { useAppStore } from '../../stores/appStore'
@@ -22,6 +22,8 @@ import {
   getWorkspaceDockSnapshot,
 } from './canvasAccess'
 import { collectPanelIds } from '../../../shared/collectPanelIds'
+import { getWorkspaceDockStore } from './dockRegistry'
+import { flattenDockOrder, sortByOrder } from './sidebarOrder'
 import { partitionWorkspacePanels, buildColdStartCanvasChildOwners } from '../../sidebar/partitionWorkspacePanels'
 import { sortWorkspacePanels } from '../../sidebar/sortWorkspacePanels'
 
@@ -40,6 +42,9 @@ export interface WorkspacePanelTree {
   orphanCanvasChildren: PanelState[]
   /** Docked panels that sit beside the canvases. */
   freePanels: PanelState[]
+  /** Canvases and free panels interleaved in dock tab order — the sidebar's
+   *  top-level rows. Children come from childrenByCanvas. */
+  topLevelPanels: PanelState[]
   /** Flat list in the overview's render order, ghosts/detached excluded. */
   orderedPanels: PanelState[]
 }
@@ -96,6 +101,20 @@ function useWorkspaceCanvasChildOwners(workspaceId: string): Map<string, string>
   return owners
 }
 
+// Dock-placed panel ids in tab order (null = placement unknown, cold start).
+// Subscribes to the workspace's live dock store so a tab reorder in the dock
+// re-orders the sidebar. The snapshot is a joined string so React compares it
+// by value.
+function useDockOrder(workspaceId: string): string[] | null {
+  const store = getWorkspaceDockStore(workspaceId)
+  const subscribe = useCallback((notify: () => void) => (store ? store.subscribe(notify) : () => {}), [store])
+  const key = useSyncExternalStore(subscribe, () => {
+    const snapshot = getWorkspaceDockSnapshot(workspaceId)
+    return snapshot ? flattenDockOrder(snapshot.zones).join('\0') : null
+  })
+  return useMemo(() => (key === null ? null : key === '' ? [] : key.split('\0')), [key])
+}
+
 export function useWorkspacePanelTree(workspaceId: string): WorkspacePanelTree {
   const panels = useAppStore(useShallow((s) => {
     const ws = s.workspaces.find((w) => w.id === workspaceId)
@@ -141,22 +160,33 @@ export function useWorkspacePanelTree(workspaceId: string): WorkspacePanelTree {
   // resolver); null = unknown (cold start), in which case nothing is filtered so
   // a real panel is never hidden. Read inline (not memoized) so a dock move that
   // re-renders via the canvas-owners subscription re-reads the latest placement.
-  const dockSnapshot = getWorkspaceDockSnapshot(workspaceId)
-  const dockPlacedIds = dockSnapshot ? new Set(
-    Object.values(dockSnapshot.zones).flatMap((zone) => collectPanelIds(zone.layout)),
-  ) : null
-  const { canvasPanels, childrenByCanvas, orphanCanvasChildren, freePanels } =
-    partitionWorkspacePanels(panelList, canvasChildOwners, dockPlacedIds)
+  const dockOrder = useDockOrder(workspaceId)
+  const dockPlacedIds = dockOrder ? new Set(dockOrder) : null
+  const partition = partitionWorkspacePanels(panelList, canvasChildOwners, dockPlacedIds)
+  const { canvasPanels, orphanCanvasChildren, freePanels } = partition
 
-  // Flatten to the overview's render order: each canvas followed by its
-  // children, then orphaned canvas children, then docked free panels.
+  // A canvas's (or container's) children follow its sidebar-only order list.
+  const childrenByCanvas: Record<string, PanelState[]> = {}
+  for (const [canvasId, children] of Object.entries(partition.childrenByCanvas)) {
+    childrenByCanvas[canvasId] = sortByOrder(children, panels[canvasId]?.sidebarOrder)
+  }
+
+  // Top-level rows follow the dock's tab order.
+  const rank = new Map((dockOrder ?? []).map((id, index) => [id, index]))
+  const topLevelPanels = [...canvasPanels, ...freePanels]
+    .map((panel, index) => ({ panel, index }))
+    .sort((a, b) => (rank.get(a.panel.id) ?? Infinity) - (rank.get(b.panel.id) ?? Infinity) || a.index - b.index)
+    .map(({ panel }) => panel)
+
+  // Flatten to the overview's render order: each top-level row followed by its
+  // (recursively nested) children, then orphaned canvas children.
   const orderedPanels: PanelState[] = []
   const pushWithChildren = (parent: PanelState): void => {
     orderedPanels.push(parent)
     for (const child of childrenByCanvas[parent.id] ?? []) pushWithChildren(child)
   }
-  for (const cp of canvasPanels) pushWithChildren(cp)
-  orderedPanels.push(...orphanCanvasChildren, ...freePanels)
+  for (const panel of topLevelPanels) pushWithChildren(panel)
+  orderedPanels.push(...orphanCanvasChildren)
 
-  return { panels, panelList, canvasPanels, childrenByCanvas, orphanCanvasChildren, freePanels, orderedPanels }
+  return { panels, panelList, canvasPanels, childrenByCanvas, orphanCanvasChildren, freePanels, topLevelPanels, orderedPanels }
 }

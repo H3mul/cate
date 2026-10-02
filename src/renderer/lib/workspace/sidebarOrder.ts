@@ -1,0 +1,39 @@
+// =============================================================================
+// sidebarOrder — pure ordering helpers for the sidebar's panel tree.
+//
+// Top-level rows follow the dock's tab order (so reordering rows reorders the
+// tab tokens, and vice versa). A canvas's children have no tab order, so they
+// follow a sidebar-only list stored on the canvas panel record.
+// =============================================================================
+
+import type { WindowDockState } from '../../../shared/types'
+import { collectPanelIds } from '../../../shared/collectPanelIds'
+
+/** Zones in the order the sidebar lists them: the main (center) zone first. */
+export const SIDEBAR_ZONE_ORDER = ['center', 'left', 'right', 'bottom'] as const
+
+/** Every dock-placed panel id, in tab order, zone by zone. */
+export function flattenDockOrder(zones: WindowDockState): string[] {
+  return SIDEBAR_ZONE_ORDER.flatMap((zone) => collectPanelIds(zones[zone].layout))
+}
+
+/** Stable sort by position in `order`; ids absent from it keep their relative
+ *  order after the listed ones. */
+export function sortByOrder<T extends { id: string }>(items: T[], order: readonly string[] | undefined): T[] {
+  if (!order || order.length === 0) return items
+  const rank = new Map(order.map((id, index) => [id, index]))
+  return items
+    .map((item, index) => ({ item, index }))
+    .sort((a, b) => (rank.get(a.item.id) ?? Infinity) - (rank.get(b.item.id) ?? Infinity) || a.index - b.index)
+    .map(({ item }) => item)
+}
+
+/** `ids` with `id` moved to just before (or after) `refId`; appended at the end
+ *  when `refId` is absent. `id` is removed from its old slot first. */
+export function placeInOrder(ids: readonly string[], id: string, refId: string | undefined, after: boolean): string[] {
+  const rest = ids.filter((other) => other !== id)
+  const at = refId ? rest.indexOf(refId) : -1
+  if (at < 0) return [...rest, id]
+  rest.splice(after ? at + 1 : at, 0, id)
+  return rest
+}
