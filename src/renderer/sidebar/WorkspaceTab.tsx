@@ -29,6 +29,7 @@ import { workspaceDisplayName } from '../lib/fs/displayPath'
 import { workspaceRuntime } from '../lib/workspace/workspaceRuntime'
 import { InlineEditInput } from './InlineEditInput'
 import { WorkspaceSkillsTree } from './WorkspaceSkillsTree'
+import { useSidebarDnd, dropIndicatorStyle, type SidebarRowDnd } from './useSidebarDnd'
 import { canvasKey, toggleCollapsed, useTreeCollapseStore } from './treeCollapse'
 import { Tooltip } from '../ui/Tooltip'
 import { worktreeForPanel, worktreeForPath } from '../lib/worktreeContext'
@@ -115,12 +116,14 @@ export interface WorkspacePanelRowProps {
   /** Context menu for rows without rename support (detached rows). Local rows
    *  route their menu through rename.onContextMenu instead. */
   onContextMenu?: (e: React.MouseEvent) => void
+  /** Sidebar drag-and-drop wiring (see useSidebarDnd). */
+  dnd?: SidebarRowDnd
   /** Overrides the row's hover tooltip (used by detached rows to note the panel
    *  lives in another window). Falls back to the panel's path / url / label. */
   titleHint?: string
 }
 
-export const WorkspacePanelRow: React.FC<WorkspacePanelRowProps> = ({ panel, indent, agentState, agentLogo: agentLogoProp, hasPorts = false, worktreeColor, onClick, onClose, rename, titleHint, onContextMenu }) => {
+export const WorkspacePanelRow: React.FC<WorkspacePanelRowProps> = ({ panel, dnd, indent, agentState, agentLogo: agentLogoProp, hasPorts = false, worktreeColor, onClick, onClose, rename, titleHint, onContextMenu }) => {
   const Icon = PANEL_ICONS[panel.type] ?? TerminalIcon
   const label = panelRowLabel(panel)
 
@@ -133,7 +136,8 @@ export const WorkspacePanelRow: React.FC<WorkspacePanelRowProps> = ({ panel, ind
     <button
       className={`group/panel mx-1.5 my-0.5 rounded-lg flex items-center gap-1.5 h-7 pr-2 text-[13px] hover:bg-hover text-left min-w-0 focus:outline-none ${
         isAwaiting ? 'text-primary' : 'text-muted hover:text-primary'}`}
-      style={{ paddingLeft: 28 + 12 * (Number(indent)) }}
+      {...dnd?.handlers}
+      style={{ paddingLeft: 28 + 12 * (Number(indent)), ...dropIndicatorStyle(dnd?.hint) }}
       onClick={onClick}
       onContextMenu={onContextMenu ?? rename?.onContextMenu}
       onMouseDown={(e) => { if (isMiddleClick(e)) e.preventDefault() }}
@@ -256,8 +260,11 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
   // dock store, multi-canvas/dock-aware and ghost-filtered. The Cmd+K palette
   // reads the exact same source (see useWorkspacePanelTree), so the overview and
   // the palette can never disagree about which panels exist or where they live.
-  const { panels, canvasPanels, childrenByCanvas, orphanCanvasChildren, freePanels, orderedPanels } =
+  const { panels, canvasPanels, childrenByCanvas, orphanCanvasChildren, topLevelPanels, orderedPanels } =
     useWorkspacePanelTree(workspace.id)
+  // Drag a row to reorder it / move it between the dock and canvases.
+  const childrenOf = useCallback((canvasId: string) => (childrenByCanvas[canvasId] ?? []).map((c) => c.id), [childrenByCanvas])
+  const { rowDnd, endDnd } = useSidebarDnd({ workspaceId: workspace.id, panels, childrenOf })
 
   // Panels living in other (detached) windows for this workspace — they dropped
   // out of the local tree above, so list them in their own "Other windows"
@@ -689,6 +696,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
       <WorkspacePanelRow
         key={p.id}
         panel={p}
+        dnd={rowDnd(p, !isRenaming)}
         indent={indent}
         agentState={info?.state}
         agentLogo={info?.logo}
@@ -722,7 +730,8 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
         role="button"
         tabIndex={0}
         className="group/panel mx-1.5 my-0.5 rounded-lg flex items-center gap-1.5 h-7 pl-3 pr-2 text-[13px] text-muted hover:text-primary hover:bg-hover text-left min-w-0 cursor-pointer focus:outline-none"
-        style={{ paddingLeft: 12 + 12 * depth }}
+        {...rowDnd(cp, !isRenaming).handlers}
+        style={{ paddingLeft: 12 + 12 * depth, ...dropIndicatorStyle(rowDnd(cp).hint) }}
         onClick={(e) => handlePanelClick(e, cp.id)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
@@ -861,7 +870,8 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
       {/* Tree of canvases + panels (when expanded) */}
       {isExpanded && treeCount > 0 && (
         <div className="flex flex-col">
-          {canvasPanels.map((cp) => renderParentGroup(cp))}
+          {topLevelPanels.map((p) =>
+            (p.type === 'canvas' || p.type === 'container') ? renderParentGroup(p) : renderPanelRow(p))}
           {orphanCanvasChildren.length > 0 && canvasPanels.length === 0 && (
             <>
               <div className="flex items-center gap-1.5 h-7 pl-6 pr-2 text-[13px] text-muted">
@@ -871,7 +881,8 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               {orphanCanvasChildren.map((p) => renderPanelRow(p, true))}
             </>
           )}
-          {freePanels.map((p) => renderPanelRow(p))}
+          {/* Drop here to move a row to the end of the top-level list. */}
+          <div className="h-2 mx-1.5" {...endDnd.handlers} style={dropIndicatorStyle(endDnd.hint)} />
           {detachedCount > 0 && (
             <>
               <div className="flex items-center gap-1.5 h-6 pl-7 pr-2 text-[11px] uppercase tracking-wide text-muted opacity-70">

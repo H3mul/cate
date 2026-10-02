@@ -2,6 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react'
 import { ChevronsDown as CaretDoubleDown, ChevronsUp as CaretDoubleUp, Plus } from 'lucide-react'
 import { useAppStore, useWorkspaceList } from '../stores/appStore'
 import { useUIStore } from '../stores/uiStore'
+import { isSidebarPanelDrag } from './useSidebarDnd'
 import { removeWorkspacesWithConfirm } from '../lib/closePanelWithConfirm'
 import { WorkspaceTab } from './WorkspaceTab'
 import { SidebarSectionHeader, SidebarHeaderButton } from './SidebarSectionHeader'
@@ -182,6 +183,8 @@ export const ProjectList: React.FC<ProjectListProps> = ({ headerTitle = 'Workspa
                   e.dataTransfer.effectAllowed = 'move'
                 }}
                 onDragOver={(e) => {
+                  // A panel row being dragged is not a workspace reorder.
+                  if (isSidebarPanelDrag(e)) return
                   e.preventDefault()
                   e.dataTransfer.dropEffect = 'move'
                   // Top half → insert before this row; bottom half → after it.
@@ -191,6 +194,7 @@ export const ProjectList: React.FC<ProjectListProps> = ({ headerTitle = 'Workspa
                   setInsertIndex(after ? index + 1 : index)
                 }}
                 onDrop={(e) => {
+                  if (isSidebarPanelDrag(e)) return
                   e.preventDefault()
                   const fromIndex = parseInt(e.dataTransfer.getData('text/plain'), 10)
                   // Recompute the target slot from the drop position rather than
