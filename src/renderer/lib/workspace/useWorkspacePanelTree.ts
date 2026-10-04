@@ -165,10 +165,15 @@ export function useWorkspacePanelTree(workspaceId: string): WorkspacePanelTree {
   const partition = partitionWorkspacePanels(panelList, canvasChildOwners, dockPlacedIds)
   const { canvasPanels, orphanCanvasChildren, freePanels } = partition
 
-  // A canvas's (or container's) children follow its sidebar-only order list.
+  // A container's children follow its layout (tab/split order — the same order
+  // as its tab tokens); a canvas's follow its sidebar-only order list.
   const childrenByCanvas: Record<string, PanelState[]> = {}
-  for (const [canvasId, children] of Object.entries(partition.childrenByCanvas)) {
-    childrenByCanvas[canvasId] = sortByOrder(children, panels[canvasId]?.sidebarOrder)
+  for (const [parentId, children] of Object.entries(partition.childrenByCanvas)) {
+    const parent = panels[parentId]
+    childrenByCanvas[parentId] = sortByOrder(
+      children,
+      parent?.type === 'container' ? collectPanelIds(parent.containerLayout) : parent?.sidebarOrder,
+    )
   }
 
   // Top-level rows follow the dock's tab order.

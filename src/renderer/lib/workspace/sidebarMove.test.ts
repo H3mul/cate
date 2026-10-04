@@ -6,6 +6,7 @@ import { createDockStore } from '../../stores/dockStore'
 import { getOrCreateCanvasStoreForPanel } from '../../stores/canvasStore'
 import { collectPanelIds } from '../../../shared/collectPanelIds'
 import { registerWorkspaceDockStore } from './dockRegistry'
+import { containerZones, registerContainerDockStore, unregisterContainerDockStore } from '../../panels/containerDockRegistry'
 import { movePanelInSidebar } from './sidebarMove'
 
 const panel = (id: string, type: string) => ({ id, type, title: id, isDirty: false })
@@ -18,12 +19,14 @@ function setup() {
       id: ws, name: 'ws', color: '', rootPath: '/ws',
       panels: Object.fromEntries([
         panel('cv', 'canvas'), panel('t1', 'terminal'), panel('t2', 'editor'), panel('d1', 'browser'), panel('d2', 'editor'),
+        { ...panel('ct', 'container'), containerLayout: { type: 'tabs', id: 'ct-stack', panelIds: ['c1', 'c2'], activeIndex: 0 } },
+        panel('c1', 'editor'), panel('c2', 'terminal'),
       ].map((p) => [p.id, p])),
     }] as never,
   })
   const dock = createDockStore()
   registerWorkspaceDockStore(ws, dock)
-  for (const id of ['cv', 'd1', 'd2']) dock.getState().dockPanel(id, 'center')
+  for (const id of ['cv', 'd1', 'd2', 'ct']) dock.getState().dockPanel(id, 'center')
   const canvas = getOrCreateCanvasStoreForPanel('cv')
   canvas.getState().addNode('t1', 'terminal')
   canvas.getState().addNode('t2', 'editor')
@@ -41,7 +44,7 @@ describe('movePanelInSidebar', () => {
     s.dock.getState().setActiveTab(s.dock.getState().zones.center.layout!.id, 1) // d1 active
     expect(move(s.ws, 'd2', 'cv', 'before')).toBe(true)
     const layout = s.dock.getState().zones.center.layout!
-    expect(collectPanelIds(layout)).toEqual(['d2', 'cv', 'd1'])
+    expect(collectPanelIds(layout)).toEqual(['d2', 'cv', 'd1', 'ct'])
     expect(layout.type === 'tabs' && layout.panelIds[layout.activeIndex]).toBe('d1')
   })
 
@@ -55,7 +58,7 @@ describe('movePanelInSidebar', () => {
   it('drops a docked panel into a canvas: node added, undocked, ordered', () => {
     expect(move(s.ws, 'd1', 'cv', 'into', ['t1', 't2'])).toBe(true)
     expect(s.canvas.getState().nodeForPanel('d1')).toBeTruthy()
-    expect(collectPanelIds(s.dock.getState().zones.center.layout)).toEqual(['cv', 'd2'])
+    expect(collectPanelIds(s.dock.getState().zones.center.layout)).toEqual(['cv', 'd2', 'ct'])
     expect(useAppStore.getState().workspaces[0].panels.cv.sidebarOrder).toEqual(['d1', 't1', 't2'])
   })
 
@@ -63,10 +66,58 @@ describe('movePanelInSidebar', () => {
     expect(move(s.ws, 't1', 'd2', 'before', ['t1', 't2'])).toBe(true)
     const node = s.canvas.getState().nodes[s.canvas.getState().nodeForPanel('t1') ?? '']
     expect(!node || node.animationState === 'exiting').toBe(true) // removal animates out
-    expect(collectPanelIds(s.dock.getState().zones.center.layout)).toEqual(['cv', 'd1', 't1', 'd2'])
+    expect(collectPanelIds(s.dock.getState().zones.center.layout)).toEqual(['cv', 'd1', 't1', 'd2', 'ct'])
   })
 
   it('refuses to put a canvas inside a canvas', () => {
     expect(move(s.ws, 'cv', 'cv', 'into')).toBe(false)
+  })
+
+  it('drops a docked panel into a container: added to its layout, undocked, ordered', () => {
+    expect(move(s.ws, 'd1', 'ct', 'into', ['c1', 'c2'])).toBe(true)
+    const p = useAppStore.getState().workspaces[0].panels
+    expect(collectPanelIds(p.ct.containerLayout)).toEqual(['d1', 'c1', 'c2'])
+    expect(collectPanelIds(s.dock.getState().zones.center.layout)).not.toContain('d1')
+  })
+
+  it('drags a container child out to the dock and drops it from the container', () => {
+    expect(move(s.ws, 'c1', 'd2', 'before', ['c1', 'c2'])).toBe(true)
+    const p = useAppStore.getState().workspaces[0].panels
+    expect(collectPanelIds(p.ct.containerLayout)).toEqual(['c2'])
+    expect(collectPanelIds(s.dock.getState().zones.center.layout)).toContain('c1')
+  })
+
+  it('reordering inside a container reorders its tab tokens (the layout)', () => {
+    expect(move(s.ws, 'c2', 'c1', 'before', ['c1', 'c2'])).toBe(true)
+    const p = useAppStore.getState().workspaces[0].panels
+    expect(collectPanelIds(p.ct.containerLayout)).toEqual(['c2', 'c1'])
+    expect(p.ct.sidebarOrder).toBeUndefined()
+  })
+
+  it('reordering in a mounted container updates the live store and keeps the active tab', () => {
+    const live = createDockStore({ zones: containerZones(useAppStore.getState().workspaces[0].panels.ct.containerLayout!) })
+    registerContainerDockStore('ct', live)
+    expect(move(s.ws, 'c2', 'c1', 'before', ['c1', 'c2'])).toBe(true)
+    const layout = live.getState().zones.center.layout!
+    expect(collectPanelIds(layout)).toEqual(['c2', 'c1'])
+    expect(layout.type === 'tabs' && layout.panelIds[layout.activeIndex]).toBe('c1')
+    unregisterContainerDockStore('ct', live)
+  })
+
+  it('a drop between two stacks joins the prior sibling\'s stack', () => {
+    const split = { type: 'split', id: 'sp', direction: 'horizontal', ratios: [0.5, 0.5], children: [
+      { type: 'tabs', id: 'a', panelIds: ['c1'], activeIndex: 0 }, { type: 'tabs', id: 'b', panelIds: ['c2'], activeIndex: 0 },
+    ] }
+    useAppStore.getState().setPanelContainerLayout(s.ws, 'ct', split as never)
+    expect(move(s.ws, 'd1', 'c2', 'before', ['c1', 'c2'])).toBe(true)
+    const layout = useAppStore.getState().workspaces[0].panels.ct.containerLayout as never as { children: { panelIds: string[] }[] }
+    expect(layout.children.map((c) => c.panelIds)).toEqual([['c1', 'd1'], ['c2']])
+  })
+
+  it('refuses container-in-container and a canvas dropped into its own descendant', () => {
+    expect(move(s.ws, 'ct', 'ct', 'into')).toBe(false)
+    s.dock.getState().undockPanel('ct')
+    s.canvas.getState().addNode('ct', 'container')
+    expect(move(s.ws, 'cv', 'ct', 'into')).toBe(false) // canvas → container on that canvas
   })
 })
