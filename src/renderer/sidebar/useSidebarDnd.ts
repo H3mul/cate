@@ -8,7 +8,7 @@
 
 import React, { useCallback, useState } from 'react'
 import type { PanelState } from '../../shared/types'
-import { PANEL_DEFINITIONS } from '../../shared/panels'
+import { canContain } from '../../shared/panels'
 import { canMoveInSidebar, movePanelInSidebar, type SidebarDropZone } from '../lib/workspace/sidebarMove'
 
 /** dataTransfer type that marks a sidebar panel-row drag (workspace drags don't carry it). */
@@ -50,8 +50,8 @@ export function useSidebarDnd(opts: {
   const zoneFor = useCallback((e: React.DragEvent, row: PanelState): SidebarDropZone => {
     const rect = e.currentTarget.getBoundingClientRect()
     const f = (e.clientY - rect.top) / rect.height
-    // A canvas row takes drops "into" its middle/bottom; its top quarter is "before".
-    if (row.type === 'canvas' && dragged && PANEL_DEFINITIONS[panels[dragged.panelId]?.type ?? 'editor'].canLiveOnCanvas) {
+    // A canvas/container row takes drops "into" its middle/bottom; its top quarter is "before".
+    if ((row.type === 'canvas' || row.type === 'container') && dragged && canContain(row.type, panels[dragged.panelId]?.type ?? 'editor')) {
       return f < 0.25 ? 'before' : 'into'
     }
     return f < 0.5 ? 'before' : 'after'
@@ -85,7 +85,7 @@ export function useSidebarDnd(opts: {
         if (!active(e)) return
         e.stopPropagation()
         const zone = zoneFor(e, row)
-        if (!dragged || !canMoveInSidebar(ws, dragged.panelId, row.id, zone)) { setHint(null); return }
+        if (!dragged || !canMoveInSidebar(ws, dragged.panelId, row.id, zone, workspaceId)) { setHint(null); return }
         e.preventDefault()
         e.dataTransfer.dropEffect = 'move'
         setHint((prev) => (prev?.refId === row.id && prev.zone === zone ? prev : { refId: row.id, zone }))
