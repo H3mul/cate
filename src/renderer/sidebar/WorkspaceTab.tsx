@@ -29,7 +29,7 @@ import { workspaceDisplayName } from '../lib/fs/displayPath'
 import { workspaceRuntime } from '../lib/workspace/workspaceRuntime'
 import { InlineEditInput } from './InlineEditInput'
 import { WorkspaceSkillsTree } from './WorkspaceSkillsTree'
-import { useSidebarDnd, dropIndicatorStyle, type SidebarRowDnd } from './useSidebarDnd'
+import { useSidebarDnd, dropIndicatorStyle, DROP_COLOR, type SidebarRowDnd } from './useSidebarDnd'
 import { canvasKey, toggleCollapsed, useTreeCollapseStore } from './treeCollapse'
 import { Tooltip } from '../ui/Tooltip'
 import { worktreeForPanel, worktreeForPath } from '../lib/worktreeContext'
@@ -101,6 +101,16 @@ export interface PanelRenameProps {
 // importers of this module.
 export { panelRowLabel }
 
+/** Separator drawn in a drop slot between siblings, starting at the siblings'
+ *  content indent so it shows which nesting level the drop targets. */
+const DropLine: React.FC<{ left: number }> = ({ left }) => (
+  <span
+    aria-hidden
+    className="pointer-events-none absolute right-1 top-1/2 h-0.5 -translate-y-1/2 rounded-full"
+    style={{ left, background: DROP_COLOR }}
+  />
+)
+
 export interface WorkspacePanelRowProps {
   panel: Pick<PanelState, 'id' | 'type' | 'title' | 'filePath' | 'tabs' | 'activeTabId'>
   /** Nesting depth: `true` = 1 level, `false` = top level, or an explicit depth. */
@@ -134,7 +144,7 @@ export const WorkspacePanelRow: React.FC<WorkspacePanelRowProps> = ({ panel, dnd
 
   return (
     <button
-      className={`group/panel mx-1.5 my-0.5 rounded-lg flex items-center gap-1.5 h-7 pr-2 text-[13px] hover:bg-hover text-left min-w-0 focus:outline-none ${
+      className={`group/panel relative mx-1.5 my-0.5 rounded-lg flex items-center gap-1.5 h-7 pr-2 text-[13px] hover:bg-hover text-left min-w-0 focus:outline-none ${
         isAwaiting ? 'text-primary' : 'text-muted hover:text-primary'}`}
       {...dnd?.handlers}
       style={{ paddingLeft: 28 + 12 * (Number(indent)), ...dropIndicatorStyle(dnd?.hint) }}
@@ -264,7 +274,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
     useWorkspacePanelTree(workspace.id)
   // Drag a row to reorder it / move it between the dock and canvases.
   const childrenOf = useCallback((canvasId: string) => (childrenByCanvas[canvasId] ?? []).map((c) => c.id), [childrenByCanvas])
-  const { rowDnd, endDnd } = useSidebarDnd({ workspaceId: workspace.id, panels, childrenOf })
+  const { rowDnd, endDnd, slotDnd } = useSidebarDnd({ workspaceId: workspace.id, panels, childrenOf })
 
   // Panels living in other (detached) windows for this workspace — they dropped
   // out of the local tree above, so list them in their own "Other windows"
@@ -673,10 +683,39 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
     return (
       <React.Fragment key={cp.id}>
         {renderCanvasRow(cp, children.length > 0, collapsed, depth)}
-        {!collapsed && children.map((p) =>
-          (p.type === 'canvas' || p.type === 'container') ? renderParentGroup(p, depth + 1) : renderPanelRow(p, depth + 1))}
+        {!collapsed && renderSiblings(children, depth + 1)}
       </React.Fragment>
     )
+  }
+
+  const isParentPanel = (p: PanelState): boolean => p.type === 'canvas' || p.type === 'container'
+
+  // A list of siblings with an isolated drop slot between each pair (and at both
+  // ends). The slot after an expanded group is the "drop out, right after the
+  // group" target, drawn at the group host's indent; the slot inside the group
+  // after its last member is drawn at the members' indent.
+  const renderSiblings = (items: PanelState[], depth: number): React.ReactNode[] => {
+    const hasMembers = (p: PanelState): boolean => isParentPanel(p) && !isCanvasCollapsed(p.id) && (childrenByCanvas[p.id]?.length ?? 0) > 0
+    const left = (p: PanelState): number => (isParentPanel(p) ? 12 + 12 * depth : 28 + 12 * depth)
+    const slot = (prev: PanelState | undefined, next: PanelState | undefined): React.ReactNode => {
+      const afterGroup = !!prev && hasMembers(prev)
+      const dnd = slotDnd(prev, next, afterGroup)
+      const anchor = (afterGroup ? prev : next ?? prev) as PanelState
+      return (
+        <div key={`slot:${prev?.id ?? ''}:${next?.id ?? ''}`} className="relative h-0">
+          <div className="absolute inset-x-1.5 -top-0.5 z-10 h-1" {...dnd.handlers}>
+            {dnd.hint && <DropLine left={left(anchor)} />}
+          </div>
+        </div>
+      )
+    }
+    const out: React.ReactNode[] = []
+    items.forEach((p, i) => {
+      out.push(slot(items[i - 1], p))
+      out.push(isParentPanel(p) ? renderParentGroup(p, depth) : renderPanelRow(p, depth))
+    })
+    if (items.length > 0) out.push(slot(items[items.length - 1], undefined))
+    return out
   }
 
   const renderPanelRow = (p: PanelState, indent: boolean | number = false) => {
@@ -729,7 +768,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
       <div
         role="button"
         tabIndex={0}
-        className="group/panel mx-1.5 my-0.5 rounded-lg flex items-center gap-1.5 h-7 pl-3 pr-2 text-[13px] text-muted hover:text-primary hover:bg-hover text-left min-w-0 cursor-pointer focus:outline-none"
+        className="group/panel relative mx-1.5 my-0.5 rounded-lg flex items-center gap-1.5 h-7 pl-3 pr-2 text-[13px] text-muted hover:text-primary hover:bg-hover text-left min-w-0 cursor-pointer focus:outline-none"
         {...rowDnd(cp, !isRenaming).handlers}
         style={{ paddingLeft: 12 + 12 * depth, ...dropIndicatorStyle(rowDnd(cp).hint) }}
         onClick={(e) => handlePanelClick(e, cp.id)}
@@ -870,8 +909,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
       {/* Tree of canvases + panels (when expanded) */}
       {isExpanded && treeCount > 0 && (
         <div className="flex flex-col">
-          {topLevelPanels.map((p) =>
-            (p.type === 'canvas' || p.type === 'container') ? renderParentGroup(p) : renderPanelRow(p))}
+          {renderSiblings(topLevelPanels, 0)}
           {orphanCanvasChildren.length > 0 && canvasPanels.length === 0 && (
             <>
               <div className="flex items-center gap-1.5 h-7 pl-6 pr-2 text-[13px] text-muted">
@@ -882,7 +920,9 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
             </>
           )}
           {/* Drop here to move a row to the end of the top-level list. */}
-          <div className="h-2 mx-1.5" {...endDnd.handlers} style={dropIndicatorStyle(endDnd.hint)} />
+          <div className="relative h-2 mx-1.5" {...endDnd.handlers}>
+            {endDnd.hint && <DropLine left={12} />}
+          </div>
           {detachedCount > 0 && (
             <>
               <div className="flex items-center gap-1.5 h-6 pl-7 pr-2 text-[11px] uppercase tracking-wide text-muted opacity-70">

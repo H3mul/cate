@@ -2,7 +2,9 @@
 // sidebarMove — apply a sidebar drag-and-drop of one panel row.
 //
 // A row can be dropped `before` / `after` another row, or `into` a canvas or
-// container row (both are "hosts": they group children in the sidebar).
+// container row (both are "hosts": they group children in the sidebar). `into`
+// appends after the host's last member; `after` on a host row means after the
+// whole group (a sibling of the host), not as its first child.
 // Where it lands depends on the reference row:
 //   - a docked row            → the panel is placed at that spot in the dock's
 //                               tab order (so the tab tokens reorder too);
@@ -138,8 +140,9 @@ export function movePanelInSidebar(move: SidebarMove): boolean {
   let refForOrder: string | undefined
   let after = zone !== 'before'
   if (ref && zone === 'into' && destHost?.id === ref.id) {
-    refForOrder = childrenOf(ref.id)[0] // first child, inserted before it
-    after = false
+    // Dropping on a host row is the same as dropping after its last member.
+    refForOrder = childrenOf(ref.id).filter((id) => id !== panelId).pop()
+    after = true
   } else if (ref) {
     refForOrder = ref.id
   }
