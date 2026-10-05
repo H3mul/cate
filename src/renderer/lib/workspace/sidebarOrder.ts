@@ -6,7 +6,7 @@
 // follow a sidebar-only list stored on the canvas panel record.
 // =============================================================================
 
-import type { WindowDockState } from '../../../shared/types'
+import type { DockLayoutNode, WindowDockState } from '../../../shared/types'
 import { collectPanelIds } from '../../../shared/collectPanelIds'
 
 /** Zones in the order the sidebar lists them: the main (center) zone first. */
@@ -15,6 +15,16 @@ export const SIDEBAR_ZONE_ORDER = ['center', 'left', 'right', 'bottom'] as const
 /** Every dock-placed panel id, in tab order, zone by zone. */
 export function flattenDockOrder(zones: WindowDockState): string[] {
   return SIDEBAR_ZONE_ORDER.flatMap((zone) => collectPanelIds(zones[zone].layout))
+}
+
+/** panelId -> id of the tab stack holding it, for every panel in a layout. A
+ *  container's split tree is shown as a flat list; consecutive members in
+ *  different stacks are separated by a split separator. */
+export function stackIdByPanel(layout: DockLayoutNode | null | undefined, out: Record<string, string> = {}): Record<string, string> {
+  if (!layout) return out
+  if (layout.type === 'tabs') for (const id of layout.panelIds) out[id] = layout.id
+  else for (const child of layout.children) stackIdByPanel(child, out)
+  return out
 }
 
 /** Stable sort by position in `order`; ids absent from it keep their relative

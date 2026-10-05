@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WindowDockState } from '../../../shared/types'
-import { flattenDockOrder, placeInOrder, sortByOrder } from './sidebarOrder'
+import { flattenDockOrder, placeInOrder, sortByOrder, stackIdByPanel } from './sidebarOrder'
 
 const zone = (position: 'left' | 'right' | 'bottom' | 'center', panelIds: string[]) => ({
   position, visible: true, size: 0,
@@ -32,5 +32,21 @@ describe('placeInOrder', () => {
     expect(placeInOrder(['a', 'b', 'c'], 'c', 'a', false)).toEqual(['c', 'a', 'b'])
     expect(placeInOrder(['a', 'b', 'c'], 'a', 'b', true)).toEqual(['b', 'a', 'c'])
     expect(placeInOrder(['a', 'b'], 'x', undefined, false)).toEqual(['a', 'b', 'x'])
+  })
+})
+
+describe('stackIdByPanel', () => {
+  it('maps every panel to its tab stack across a split tree', () => {
+    const layout = {
+      type: 'split', id: 's', direction: 'horizontal', ratios: [0.5, 0.5], children: [
+        { type: 'tabs', id: 'a', panelIds: ['t1', 't2'], activeIndex: 0 },
+        { type: 'split', id: 's2', direction: 'vertical', ratios: [0.5, 0.5], children: [
+          { type: 'tabs', id: 'b', panelIds: ['t3'], activeIndex: 0 },
+          { type: 'tabs', id: 'c', panelIds: ['t4'], activeIndex: 0 },
+        ] },
+      ],
+    } as never
+    expect(stackIdByPanel(layout)).toEqual({ t1: 'a', t2: 'a', t3: 'b', t4: 'c' })
+    expect(stackIdByPanel(null)).toEqual({})
   })
 })

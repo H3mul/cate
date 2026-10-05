@@ -104,14 +104,26 @@ describe('movePanelInSidebar', () => {
     unregisterContainerDockStore('ct', live)
   })
 
-  it('a drop between two stacks joins the prior sibling\'s stack', () => {
+  it('a drop before/after a row joins that row\'s own split group', () => {
     const split = { type: 'split', id: 'sp', direction: 'horizontal', ratios: [0.5, 0.5], children: [
       { type: 'tabs', id: 'a', panelIds: ['c1'], activeIndex: 0 }, { type: 'tabs', id: 'b', panelIds: ['c2'], activeIndex: 0 },
     ] }
     useAppStore.getState().setPanelContainerLayout(s.ws, 'ct', split as never)
     expect(move(s.ws, 'd1', 'c2', 'before', ['c1', 'c2'])).toBe(true)
     const layout = useAppStore.getState().workspaces[0].panels.ct.containerLayout as never as { children: { panelIds: string[] }[] }
-    expect(layout.children.map((c) => c.panelIds)).toEqual([['c1', 'd1'], ['c2']])
+    expect(layout.children.map((c) => c.panelIds)).toEqual([['c1'], ['d1', 'c2']])
+    expect(move(s.ws, 'd2', 'c1', 'after', ['c1', 'd1', 'c2'])).toBe(true)
+    const next = useAppStore.getState().workspaces[0].panels.ct.containerLayout as never as { children: { panelIds: string[] }[] }
+    expect(next.children.map((c) => c.panelIds)).toEqual([['c1', 'd2'], ['d1', 'c2']])
+  })
+
+  it('dragging the last member out of a split group removes the group and its split', () => {
+    const split = { type: 'split', id: 'sp', direction: 'horizontal', ratios: [0.5, 0.5], children: [
+      { type: 'tabs', id: 'a', panelIds: ['c1'], activeIndex: 0 }, { type: 'tabs', id: 'b', panelIds: ['c2'], activeIndex: 0 },
+    ] }
+    useAppStore.getState().setPanelContainerLayout(s.ws, 'ct', split as never)
+    expect(move(s.ws, 'c1', 'd2', 'before', ['c1', 'c2'])).toBe(true)
+    expect(useAppStore.getState().workspaces[0].panels.ct.containerLayout).toMatchObject({ type: 'tabs', panelIds: ['c2'] })
   })
 
   it('dropping on a group row == dropping after its last member', () => {
