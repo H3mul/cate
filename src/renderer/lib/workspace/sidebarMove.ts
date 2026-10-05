@@ -15,8 +15,8 @@
 //                               z-order or viewport.
 //   - a container child /     → the panel is placed at that spot in the
 //     container                 container's layout, so its tab tokens reorder
-//                               too. Split membership is not chosen by the drop:
-//                               it joins the stack of the prior sibling.
+//                               too. It joins the split group (tab stack) of the
+//                               row it is dropped before/after.
 // Moving between parents (dock ↔ canvas ↔ container) also moves the panel
 // itself; a running terminal is armed to reconnect to its PTY first.
 // =============================================================================
@@ -160,19 +160,19 @@ export function movePanelInSidebar(move: SidebarMove): boolean {
     const next = layout && removePanelFromTree(layout, panelId)
     app.setPanelContainerLayout(workspaceId, hostId, next || emptyContainerLayout())
   }
-  // Place the panel in a container's layout at the sidebar position. A "before"
-  // drop joins the prior sibling's stack (just after it); only the first row
-  // goes before its own successor. Works on the live store, or on a scratch
-  // store seeded from the mirrored layout when the container isn't mounted.
+  // Place the panel in a container's layout at the sidebar position: it joins
+  // the reference row's own split group (tab stack), before or after it. The
+  // sidebar draws a separator between groups, so each side of it is its own
+  // drop slot. Works on the live store, or on a scratch store seeded from the
+  // mirrored layout when the container isn't mounted.
   const placeInContainer = (hostId: string): void => {
     const live = getContainerDockStore(hostId)
     const store = live ?? createDockStore({ zones: containerZones(ws.panels[hostId]?.containerLayout ?? emptyContainerLayout()) })
     const layout = store.getState().zones.center.layout
     const siblings = collectPanelIds(layout).filter((id) => id !== panelId)
     const at = refForOrder ? siblings.indexOf(refForOrder) : -1
-    let anchor = at < 0 ? siblings[siblings.length - 1] : refForOrder
-    let anchorAfter = at < 0 || after
-    if (at > 0 && !after) { anchor = siblings[at - 1]; anchorAfter = true }
+    const anchor = at < 0 ? siblings[siblings.length - 1] : refForOrder
+    const anchorAfter = at < 0 || after
     const stack = anchor && layout ? findStackContainingPanel(layout, anchor) : null
     const activeInStore = activePanelByStack(store)
     if (stack && anchor) {

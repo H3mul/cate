@@ -106,7 +106,7 @@ export { panelRowLabel }
 const DropLine: React.FC<{ left: number }> = ({ left }) => (
   <span
     aria-hidden
-    className="pointer-events-none absolute right-1 top-1/2 h-0.5 -translate-y-1/2 rounded-full"
+    className="pointer-events-none absolute right-2.5 top-1/2 h-0.5 -translate-y-1/2 rounded-full"
     style={{ left, background: DROP_COLOR }}
   />
 )
@@ -270,11 +270,11 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
   // dock store, multi-canvas/dock-aware and ghost-filtered. The Cmd+K palette
   // reads the exact same source (see useWorkspacePanelTree), so the overview and
   // the palette can never disagree about which panels exist or where they live.
-  const { panels, canvasPanels, childrenByCanvas, orphanCanvasChildren, topLevelPanels, orderedPanels } =
+  const { panels, canvasPanels, childrenByCanvas, stackOf, orphanCanvasChildren, topLevelPanels, orderedPanels } =
     useWorkspacePanelTree(workspace.id)
   // Drag a row to reorder it / move it between the dock and canvases.
   const childrenOf = useCallback((canvasId: string) => (childrenByCanvas[canvasId] ?? []).map((c) => c.id), [childrenByCanvas])
-  const { rowDnd, endDnd, slotDnd } = useSidebarDnd({ workspaceId: workspace.id, panels, childrenOf })
+  const { rowDnd, slotDnd, treeDnd } = useSidebarDnd({ workspaceId: workspace.id, panels, childrenOf })
 
   // Panels living in other (detached) windows for this workspace — they dropped
   // out of the local tree above, so list them in their own "Other windows"
@@ -688,6 +688,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
     )
   }
 
+  const lastTop = topLevelPanels[topLevelPanels.length - 1]
   const isParentPanel = (p: PanelState): boolean => p.type === 'canvas' || p.type === 'container'
 
   // A list of siblings with an isolated drop slot between each pair (and at both
@@ -695,23 +696,36 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
   // group" target, drawn at the group host's indent; the slot inside the group
   // after its last member is drawn at the members' indent.
   const renderSiblings = (items: PanelState[], depth: number): React.ReactNode[] => {
+    // A container's split tree is a flat list: a static separator sits between
+    // members of different split groups, with a drop slot on each side so a row
+    // can be dropped into either group.
     const hasMembers = (p: PanelState): boolean => isParentPanel(p) && !isCanvasCollapsed(p.id) && (childrenByCanvas[p.id]?.length ?? 0) > 0
-    const left = (p: PanelState): number => (isParentPanel(p) ? 12 + 12 * depth : 28 + 12 * depth)
+    // Icon column: a parent row's caret sits 16px left of its icon, so its icon lines up with plain rows'.
+    const left = (): number => 28 + 12 * depth
     const slot = (prev: PanelState | undefined, next: PanelState | undefined): React.ReactNode => {
       const afterGroup = !!prev && hasMembers(prev)
       const dnd = slotDnd(prev, next, afterGroup)
-      const anchor = (afterGroup ? prev : next ?? prev) as PanelState
       return (
         <div key={`slot:${prev?.id ?? ''}:${next?.id ?? ''}`} className="relative h-0">
-          <div className="absolute inset-x-1.5 -top-0.5 z-10 h-1" {...dnd.handlers}>
-            {dnd.hint && <DropLine left={left(anchor)} />}
+          {/* Spans the gap plus 2px into each neighbour and the full row width, so
+              there is no dead pixel between the two rows' midpoints. */}
+          <div className="absolute inset-x-0 -top-1 z-10 h-2" {...dnd.handlers}>
+            {dnd.hint && <DropLine left={left() + 6} />}
           </div>
         </div>
       )
     }
     const out: React.ReactNode[] = []
     items.forEach((p, i) => {
-      out.push(slot(items[i - 1], p))
+      const prev = items[i - 1]
+      const split = !!prev && !!stackOf[prev.id] && !!stackOf[p.id] && stackOf[prev.id] !== stackOf[p.id]
+      if (split) {
+        out.push(slot(prev, undefined))
+        out.push(<div key={`split:${prev.id}:${p.id}`} aria-hidden className="h-2" />)
+        out.push(slot(undefined, p))
+      } else {
+        out.push(slot(prev, p))
+      }
       out.push(isParentPanel(p) ? renderParentGroup(p, depth) : renderPanelRow(p, depth))
     })
     if (items.length > 0) out.push(slot(items[items.length - 1], undefined))
@@ -908,7 +922,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
 
       {/* Tree of canvases + panels (when expanded) */}
       {isExpanded && treeCount > 0 && (
-        <div className="flex flex-col">
+        <div className="flex flex-col" {...treeDnd}>
           {renderSiblings(topLevelPanels, 0)}
           {orphanCanvasChildren.length > 0 && canvasPanels.length === 0 && (
             <>
@@ -919,10 +933,8 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
               {orphanCanvasChildren.map((p) => renderPanelRow(p, true))}
             </>
           )}
-          {/* Drop here to move a row to the end of the top-level list. */}
-          <div className="relative h-2 mx-1.5" {...endDnd.handlers}>
-            {endDnd.hint && <DropLine left={12} />}
-          </div>
+          {/* Slack below the list: same target (and indicator) as the last slot. */}
+          <div className="h-2 mx-1.5" {...slotDnd(lastTop, undefined, !!lastTop && (childrenByCanvas[lastTop.id]?.length ?? 0) > 0 && (lastTop.type === 'canvas' || lastTop.type === 'container') && !isCanvasCollapsed(lastTop.id)).handlers} />
           {detachedCount > 0 && (
             <>
               <div className="flex items-center gap-1.5 h-6 pl-7 pr-2 text-[11px] uppercase tracking-wide text-muted opacity-70">
