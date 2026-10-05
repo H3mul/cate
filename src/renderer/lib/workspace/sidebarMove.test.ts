@@ -59,7 +59,7 @@ describe('movePanelInSidebar', () => {
     expect(move(s.ws, 'd1', 'cv', 'into', ['t1', 't2'])).toBe(true)
     expect(s.canvas.getState().nodeForPanel('d1')).toBeTruthy()
     expect(collectPanelIds(s.dock.getState().zones.center.layout)).toEqual(['cv', 'd2', 'ct'])
-    expect(useAppStore.getState().workspaces[0].panels.cv.sidebarOrder).toEqual(['d1', 't1', 't2'])
+    expect(useAppStore.getState().workspaces[0].panels.cv.sidebarOrder).toEqual(['t1', 't2', 'd1'])
   })
 
   it('drags a canvas child out to the dock at a position', () => {
@@ -76,7 +76,7 @@ describe('movePanelInSidebar', () => {
   it('drops a docked panel into a container: added to its layout, undocked, ordered', () => {
     expect(move(s.ws, 'd1', 'ct', 'into', ['c1', 'c2'])).toBe(true)
     const p = useAppStore.getState().workspaces[0].panels
-    expect(collectPanelIds(p.ct.containerLayout)).toEqual(['d1', 'c1', 'c2'])
+    expect(collectPanelIds(p.ct.containerLayout)).toEqual(['c1', 'c2', 'd1'])
     expect(collectPanelIds(s.dock.getState().zones.center.layout)).not.toContain('d1')
   })
 
@@ -112,6 +112,25 @@ describe('movePanelInSidebar', () => {
     expect(move(s.ws, 'd1', 'c2', 'before', ['c1', 'c2'])).toBe(true)
     const layout = useAppStore.getState().workspaces[0].panels.ct.containerLayout as never as { children: { panelIds: string[] }[] }
     expect(layout.children.map((c) => c.panelIds)).toEqual([['c1', 'd1'], ['c2']])
+  })
+
+  it('dropping on a group row == dropping after its last member', () => {
+    expect(move(s.ws, 'd1', 'ct', 'into', ['c1', 'c2'])).toBe(true)
+    expect(move(s.ws, 'd2', 'c2', 'after', ['c1', 'c2', 'd1'])).toBe(true)
+    expect(collectPanelIds(useAppStore.getState().workspaces[0].panels.ct.containerLayout)).toEqual(['c1', 'c2', 'd2', 'd1'])
+  })
+
+  it('dropping a docked panel beside a canvas child joins that canvas at that spot', () => {
+    expect(move(s.ws, 'd1', 't1', 'after', ['t1', 't2'])).toBe(true)
+    expect(s.canvas.getState().nodeForPanel('d1')).toBeTruthy()
+    expect(useAppStore.getState().workspaces[0].panels.cv.sidebarOrder).toEqual(['t1', 'd1', 't2'])
+  })
+
+  it('"after" a group row drops OUT of the group, right after the group host', () => {
+    expect(move(s.ws, 'c1', 'ct', 'after', ['c1', 'c2'])).toBe(true)
+    const p = useAppStore.getState().workspaces[0].panels
+    expect(collectPanelIds(p.ct.containerLayout)).toEqual(['c2'])
+    expect(collectPanelIds(s.dock.getState().zones.center.layout)).toEqual(['cv', 'd1', 'd2', 'ct', 'c1'])
   })
 
   it('refuses container-in-container and a canvas dropped into its own descendant', () => {

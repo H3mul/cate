@@ -22,13 +22,12 @@ export interface SidebarRowDnd {
   hint: SidebarDropZone | null
 }
 
-/** Inset line above/below a row, or an outline for "into". */
+export const DROP_COLOR = 'rgba(96, 165, 250, 0.8)'
+
+/** Outline for an "into" drop on a canvas/container row. before/after are drawn
+ *  as an indented separator line instead (see DropLine in WorkspaceTab). */
 export function dropIndicatorStyle(hint: SidebarDropZone | null | undefined): React.CSSProperties {
-  const color = 'rgba(96, 165, 250, 0.8)'
-  if (hint === 'before') return { boxShadow: `inset 0 2px 0 0 ${color}` }
-  if (hint === 'after') return { boxShadow: `inset 0 -2px 0 0 ${color}` }
-  if (hint === 'into') return { boxShadow: `inset 0 0 0 1.5px ${color}` }
-  return {}
+  return hint === 'into' ? { boxShadow: `inset 0 0 0 1.5px ${DROP_COLOR}` } : {}
 }
 
 export function isSidebarPanelDrag(e: React.DragEvent): boolean {
@@ -42,7 +41,8 @@ export function useSidebarDnd(opts: {
   childrenOf: (canvasPanelId: string) => string[]
 }) {
   const { workspaceId, panels, childrenOf } = opts
-  const [hint, setHint] = useState<{ refId: string | null; zone: SidebarDropZone } | null>(null)
+  // `tail`: the strip after a group's last member — "after the group host".
+  const [hint, setHint] = useState<{ refId: string | null; zone: SidebarDropZone; tail?: boolean } | null>(null)
 
   const active = (e: React.DragEvent): boolean =>
     isSidebarPanelDrag(e) && dragged?.workspaceId === workspaceId
@@ -70,7 +70,7 @@ export function useSidebarDnd(opts: {
 
   const ws = { panels }
   const rowDnd = useCallback((row: PanelState, draggable = true): SidebarRowDnd => ({
-    hint: hint?.refId === row.id ? hint.zone : null,
+    hint: !hint?.tail && hint?.refId === row.id ? hint.zone : null,
     handlers: {
       draggable,
       onDragStart: (e) => {
@@ -119,5 +119,39 @@ export function useSidebarDnd(opts: {
     },
   }
 
-  return { rowDnd, endDnd }
+  /** The isolated drop slot between two siblings (either may be absent at the
+   *  ends of a list). Its target is the canonical "before next" / "after prev";
+   *  rows hovered near the same gap resolve to the same target, so exactly one
+   *  slot lights. `afterGroup`: `prev` is an expanded group and this slot is the
+   *  strip below its last member — it drops OUT of the group, right after it. */
+  const slotDnd = (prev: PanelState | undefined, next: PanelState | undefined, afterGroup = false): SidebarRowDnd => {
+    const target: { refId: string; zone: SidebarDropZone; tail?: boolean } | null =
+      afterGroup && prev ? { refId: prev.id, zone: 'after', tail: true }
+      : next ? { refId: next.id, zone: 'before' }
+      : prev ? { refId: prev.id, zone: 'after' }
+      : null
+    const lit = !!hint && !!target && (
+      (hint.refId === prev?.id && hint.zone === 'after') || (hint.refId === next?.id && hint.zone === 'before'))
+    return {
+      hint: lit ? 'before' : null,
+      handlers: {
+        onDragOver: (e) => {
+          if (!active(e) || !target) return
+          e.stopPropagation()
+          if (!dragged || !canMoveInSidebar(ws, dragged.panelId, target.refId, target.zone, workspaceId)) { setHint(null); return }
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'move'
+          setHint((prev) => (prev?.refId === target.refId && prev.zone === target.zone && prev.tail === target.tail ? prev : target))
+        },
+        onDrop: (e) => {
+          if (!active(e) || !target) return
+          e.preventDefault()
+          e.stopPropagation()
+          apply(target.refId, target.zone)
+        },
+      },
+    }
+  }
+
+  return { rowDnd, endDnd, slotDnd }
 }
