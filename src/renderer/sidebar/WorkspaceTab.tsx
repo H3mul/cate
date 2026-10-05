@@ -106,7 +106,7 @@ export { panelRowLabel }
 const DropLine: React.FC<{ left: number }> = ({ left }) => (
   <span
     aria-hidden
-    className="pointer-events-none absolute right-1 top-1/2 h-0.5 -translate-y-1/2 rounded-full"
+    className="pointer-events-none absolute right-2.5 top-1/2 h-0.5 -translate-y-1/2 rounded-full"
     style={{ left, background: DROP_COLOR }}
   />
 )
@@ -274,7 +274,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
     useWorkspacePanelTree(workspace.id)
   // Drag a row to reorder it / move it between the dock and canvases.
   const childrenOf = useCallback((canvasId: string) => (childrenByCanvas[canvasId] ?? []).map((c) => c.id), [childrenByCanvas])
-  const { rowDnd, slotDnd } = useSidebarDnd({ workspaceId: workspace.id, panels, childrenOf })
+  const { rowDnd, slotDnd, treeDnd } = useSidebarDnd({ workspaceId: workspace.id, panels, childrenOf })
 
   // Panels living in other (detached) windows for this workspace — they dropped
   // out of the local tree above, so list them in their own "Other windows"
@@ -707,8 +707,10 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
       const dnd = slotDnd(prev, next, afterGroup)
       return (
         <div key={`slot:${prev?.id ?? ''}:${next?.id ?? ''}`} className="relative h-0">
-          <div className="absolute inset-x-1.5 -top-0.5 z-10 h-1" {...dnd.handlers}>
-            {dnd.hint && <DropLine left={left()} />}
+          {/* Spans the gap plus 2px into each neighbour and the full row width, so
+              there is no dead pixel between the two rows' midpoints. */}
+          <div className="absolute inset-x-0 -top-1 z-10 h-2" {...dnd.handlers}>
+            {dnd.hint && <DropLine left={left() + 6} />}
           </div>
         </div>
       )
@@ -920,7 +922,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
 
       {/* Tree of canvases + panels (when expanded) */}
       {isExpanded && treeCount > 0 && (
-        <div className="flex flex-col">
+        <div className="flex flex-col" {...treeDnd}>
           {renderSiblings(topLevelPanels, 0)}
           {orphanCanvasChildren.length > 0 && canvasPanels.length === 0 && (
             <>

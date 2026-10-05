@@ -133,5 +133,22 @@ export function useSidebarDnd(opts: {
     }
   }
 
-  return { rowDnd, slotDnd }
+  /** Fallback for the whole tree: any pixel not covered by a row or slot (side
+   *  margins, sub-pixel gaps) still accepts the drag, so the OS never flashes
+   *  its "no drop" cursor — and a drop there lands on the last valid target. */
+  const treeDnd: Pick<SidebarRowDnd['handlers'], 'onDragOver' | 'onDrop'> = {
+    onDragOver: (e) => {
+      if (!active(e)) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'move'
+    },
+    onDrop: (e) => {
+      if (!active(e)) return
+      e.preventDefault()
+      if (hint?.refId) apply(hint.refId, hint.zone)
+      else clear()
+    },
+  }
+
+  return { rowDnd, slotDnd, treeDnd }
 }
