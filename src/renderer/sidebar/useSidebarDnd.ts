@@ -99,26 +99,6 @@ export function useSidebarDnd(opts: {
     },
   }), [hint, workspaceId, panels, clear, zoneFor, apply])
 
-  /** Drop target after the last top-level row ("end of list"). */
-  const endDnd: SidebarRowDnd = {
-    hint: hint?.refId === null ? 'before' : null,
-    handlers: {
-      onDragOver: (e) => {
-        if (!active(e)) return
-        e.stopPropagation()
-        e.preventDefault()
-        e.dataTransfer.dropEffect = 'move'
-        setHint((prev) => (prev?.refId === null ? prev : { refId: null, zone: 'before' }))
-      },
-      onDrop: (e) => {
-        if (!active(e)) return
-        e.preventDefault()
-        e.stopPropagation()
-        apply(null, 'before')
-      },
-    },
-  }
-
   /** The isolated drop slot between two siblings (either may be absent at the
    *  ends of a list). Its target is the canonical "before next" / "after prev";
    *  rows hovered near the same gap resolve to the same target, so exactly one
@@ -153,5 +133,5 @@ export function useSidebarDnd(opts: {
     }
   }
 
-  return { rowDnd, endDnd, slotDnd }
+  return { rowDnd, slotDnd }
 }

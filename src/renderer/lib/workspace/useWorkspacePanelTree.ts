@@ -23,7 +23,7 @@ import {
 } from './canvasAccess'
 import { collectPanelIds } from '../../../shared/collectPanelIds'
 import { getWorkspaceDockStore } from './dockRegistry'
-import { flattenDockOrder, sortByOrder } from './sidebarOrder'
+import { flattenDockOrder, sortByOrder, stackIdByPanel } from './sidebarOrder'
 import { partitionWorkspacePanels, buildColdStartCanvasChildOwners } from '../../sidebar/partitionWorkspacePanels'
 import { sortWorkspacePanels } from '../../sidebar/sortWorkspacePanels'
 
@@ -38,6 +38,8 @@ export interface WorkspacePanelTree {
   canvasPanels: PanelState[]
   /** Children grouped by the canvas panel id that hosts them. */
   childrenByCanvas: Record<string, PanelState[]>
+  /** Container children -> the id of the split group (tab stack) they sit in. */
+  stackOf: Record<string, string>
   /** Canvas children whose owning canvas is gone and no canvas remains. */
   orphanCanvasChildren: PanelState[]
   /** Docked panels that sit beside the canvases. */
@@ -176,6 +178,9 @@ export function useWorkspacePanelTree(workspaceId: string): WorkspacePanelTree {
     )
   }
 
+  const stackOf: Record<string, string> = {}
+  for (const p of Object.values(panels)) if (p.type === 'container') stackIdByPanel(p.containerLayout, stackOf)
+
   // Top-level rows follow the dock's tab order.
   const rank = new Map((dockOrder ?? []).map((id, index) => [id, index]))
   const topLevelPanels = [...canvasPanels, ...freePanels]
@@ -193,5 +198,5 @@ export function useWorkspacePanelTree(workspaceId: string): WorkspacePanelTree {
   for (const panel of topLevelPanels) pushWithChildren(panel)
   orderedPanels.push(...orphanCanvasChildren)
 
-  return { panels, panelList, canvasPanels, childrenByCanvas, orphanCanvasChildren, freePanels, topLevelPanels, orderedPanels }
+  return { panels, panelList, canvasPanels, childrenByCanvas, stackOf, orphanCanvasChildren, freePanels, topLevelPanels, orderedPanels }
 }
