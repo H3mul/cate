@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAppStore } from '../../stores/appStore'
 import { createDockStore } from '../../stores/dockStore'
-import { getOrCreateCanvasStoreForPanel } from '../../stores/canvasStore'
+import { getOrCreateCanvasStoreForPanel, releaseCanvasStoreForPanel } from '../../stores/canvasStore'
 import { collectPanelIds } from '../../../shared/collectPanelIds'
 import { registerWorkspaceDockStore } from './dockRegistry'
 import { containerZones, registerContainerDockStore, unregisterContainerDockStore } from '../../panels/containerDockRegistry'
 import { movePanelInSidebar } from './sidebarMove'
+import { revealPanel } from './panelReveal'
 
 const panel = (id: string, type: string) => ({ id, type, title: id, isDirty: false })
 
@@ -39,6 +40,7 @@ const move = (ws: string, panelId: string, refId: string | null, zone: 'before' 
 describe('movePanelInSidebar', () => {
   let s: ReturnType<typeof setup>
   beforeEach(() => { s = setup() })
+  afterEach(() => { releaseCanvasStoreForPanel('cv') })
 
   it('reorders docked rows, which reorders the dock tabs and keeps the active tab', () => {
     s.dock.getState().setActiveTab(s.dock.getState().zones.center.layout!.id, 1) // d1 active
@@ -90,6 +92,23 @@ describe('movePanelInSidebar', () => {
     const node = s.canvas.getState().nodeForPanel('t1')
     expect(move(s.ws, 't1', 'cv', 'into', ['t1', 't2'])).toBe(true)
     expect(s.canvas.getState().nodeForPanel('t1')).toBe(node)
+  })
+
+  it('revealing the dropped panel makes its tab the active one in its window', async () => {
+    expect(move(s.ws, 'd1', 't1', 'after', ['t1', 't2'])).toBe(true)
+    const layout = () => s.canvas.getState().nodes[s.canvas.getState().nodeForPanel('d1')!].dockLayout as { panelIds: string[]; activeIndex: number }
+    expect(layout().panelIds[layout().activeIndex]).toBe('t1') // the move itself keeps the active tab
+    expect(await revealPanel(s.ws, 'd1')).toBe(true)
+    expect(layout().panelIds[layout().activeIndex]).toBe('d1')
+  })
+
+  it('pulling a window\'s last tab into another window centers on the window it joined', async () => {
+    const focus = vi.spyOn(s.canvas.getState(), 'focusAndCenter')
+    const target = s.canvas.getState().nodeForPanel('t2')!
+    expect(move(s.ws, 't1', 't2', 'before', ['t1', 't2'])).toBe(true)
+    expect(s.canvas.getState().nodeForPanel('t1')).toBe(target) // not the exiting, now-empty window
+    expect(await revealPanel(s.ws, 't1')).toBe(true)
+    expect(focus).toHaveBeenLastCalledWith(target)
   })
 
   it('drops a docked panel beside a canvas tab: joins that window at that spot', () => {

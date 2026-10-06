@@ -10,6 +10,9 @@ vi.mock('../lib/workspace/sidebarMove', () => ({
   canMoveInSidebar: () => true,
 }))
 
+const revealPanel = vi.hoisted(() => vi.fn(async () => true))
+vi.mock('../lib/workspace/panelReveal', () => ({ revealPanel }))
+
 import { SIDEBAR_PANEL_MIME, useSidebarDnd } from './useSidebarDnd'
 import type { PanelState } from '../../shared/types'
 
@@ -62,4 +65,5 @@ it('dragging a row does not bubble to the workspace wrapper, and dropping moves 
   expect(movePanelInSidebar).not.toHaveBeenCalled() // deferred so the OS drag ghost clears first
   await act(async () => { await new Promise((r) => setTimeout(r, 0)) })
   expect(movePanelInSidebar).toHaveBeenCalledWith(expect.objectContaining({ workspaceId: 'ws', panelId: 'a', refId: 'b' }))
+  expect(revealPanel).toHaveBeenCalledWith('ws', 'a', { retry: true }) // the dropped panel becomes the active view
 })
