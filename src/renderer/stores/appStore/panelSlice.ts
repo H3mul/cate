@@ -45,7 +45,6 @@ type PanelSliceActions = Pick<
   | 'createCanvas'
   | 'createContainer'
   | 'setPanelContainerLayout'
-  | 'setPanelSidebarOrder'
   | 'createAgent'
   | 'closePanel'
   | 'updatePanelTitle'
@@ -197,10 +196,6 @@ export function createPanelSlice(set: AppSet, get: AppGet): PanelSliceActions {
         ...(worktreeId ? { worktreeId } : {}),
       }
       return addAndPlacePanel(set, get, workspaceId, panel, withDefaultSize('review', placement), position)
-    },
-
-    setPanelSidebarOrder(workspaceId, panelId, order) {
-      setPanelField(set, workspaceId, panelId, (panel) => ({ ...panel, sidebarOrder: order }))
     },
 
     createCanvas(workspaceId, position?, placement?) {

@@ -103,15 +103,24 @@ export function useSidebarDnd(opts: {
    *  ends of a list). Its target is the canonical "before next" / "after prev";
    *  rows hovered near the same gap resolve to the same target, so exactly one
    *  slot lights. `afterGroup`: `prev` is an expanded group and this slot is the
-   *  strip below its last member — it drops OUT of the group, right after it. */
-  const slotDnd = (prev: PanelState | undefined, next: PanelState | undefined, afterGroup = false): SidebarRowDnd => {
+   *  strip below its last member — it drops OUT of the group, right after it.
+   *  `newWindowOf`: the trailing slot of a canvas — spawns a new window (same
+   *  as dropping on the canvas row). */
+  const slotDnd = (
+    prev: PanelState | undefined,
+    next: PanelState | undefined,
+    afterGroup = false,
+    newWindowOf?: PanelState,
+  ): SidebarRowDnd => {
     const target: { refId: string; zone: SidebarDropZone; tail?: boolean } | null =
-      afterGroup && prev ? { refId: prev.id, zone: 'after', tail: true }
+      newWindowOf ? { refId: newWindowOf.id, zone: 'into', tail: true }
+      : afterGroup && prev ? { refId: prev.id, zone: 'after', tail: true }
       : next ? { refId: next.id, zone: 'before' }
       : prev ? { refId: prev.id, zone: 'after' }
       : null
-    const lit = !!hint && !!target && (
-      (hint.refId === prev?.id && hint.zone === 'after') || (hint.refId === next?.id && hint.zone === 'before'))
+    const lit = !!hint && !!target && (newWindowOf
+      ? hint.tail && hint.refId === newWindowOf.id && hint.zone === 'into'
+      : (hint.refId === prev?.id && hint.zone === 'after') || (hint.refId === next?.id && hint.zone === 'before'))
     return {
       hint: lit ? 'before' : null,
       handlers: {

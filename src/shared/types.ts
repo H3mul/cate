@@ -226,10 +226,6 @@ export interface PanelState {
    *  container's private DockStore is the runtime authority; it mirrors its
    *  center layout here so the layout persists with the panel record. */
   containerLayout?: DockLayoutNode
-  /** Canvas panels only: the sidebar's order of this canvas's child panels. A
-   *  sidebar-only preference — the canvas's nodes, z-order and viewport never
-   *  change when it does. Children missing from the list follow in default order. */
-  sidebarOrder?: string[]
   /** Browser panels only: open tabs (light model). This is the sole persisted
    *  navigation state; the current URL is derived through browserPanelUrl. */
   tabs?: BrowserTab[]
@@ -1292,8 +1288,6 @@ export interface ProjectPanelRef {
   filePath?: string
   /** Container panels only: see PanelState.containerLayout. */
   containerLayout?: DockLayoutNode
-  /** Canvas panels only: see PanelState.sidebarOrder. */
-  sidebarOrder?: string[]
   /** Browser panels only: canonical navigation state. */
   tabs?: BrowserTab[]
   activeTabId?: string

@@ -48,18 +48,54 @@ describe('movePanelInSidebar', () => {
     expect(layout.type === 'tabs' && layout.panelIds[layout.activeIndex]).toBe('d1')
   })
 
-  it('reordering inside a canvas only records a sidebar order — canvas state is untouched', () => {
-    const before = JSON.stringify(s.canvas.getState().nodes)
+  const tabsOf = (panelId: string): string[] => {
+    const nodeId = s.canvas.getState().nodeForPanel(panelId)
+    return nodeId ? collectPanelIds(s.canvas.getState().nodes[nodeId].dockLayout) : []
+  }
+
+  it('dropping beside another window\'s tab joins that window; windows keep their shape', () => {
+    const node1 = s.canvas.getState().nodeForPanel('t1')!
+    const shape = JSON.stringify({ o: s.canvas.getState().nodes[node1].origin, z: s.canvas.getState().nodes[node1].size })
     expect(move(s.ws, 't2', 't1', 'before', ['t1', 't2'])).toBe(true)
-    expect(JSON.stringify(s.canvas.getState().nodes)).toBe(before)
-    expect(useAppStore.getState().workspaces[0].panels.cv.sidebarOrder).toEqual(['t2', 't1'])
+    expect(tabsOf('t1')).toEqual(['t2', 't1'])
+    const after = s.canvas.getState().nodes[node1]
+    expect(JSON.stringify({ o: after.origin, z: after.size })).toBe(shape)
+    expect(s.canvas.getState().nodeForPanel('t2')).toBe(node1)
   })
 
-  it('drops a docked panel into a canvas: node added, undocked, ordered', () => {
+  it('reorders tabs within one window', () => {
+    move(s.ws, 't2', 't1', 'before', ['t1', 't2'])
+    expect(move(s.ws, 't1', 't2', 'before', ['t2', 't1'])).toBe(true)
+    expect(tabsOf('t1')).toEqual(['t1', 't2'])
+  })
+
+  it('dropping on the canvas (row or trailing slot) spawns a new window', () => {
     expect(move(s.ws, 'd1', 'cv', 'into', ['t1', 't2'])).toBe(true)
-    expect(s.canvas.getState().nodeForPanel('d1')).toBeTruthy()
+    const node = s.canvas.getState().nodeForPanel('d1')
+    expect(node).toBeTruthy()
+    expect(node).not.toBe(s.canvas.getState().nodeForPanel('t1'))
+    expect(tabsOf('d1')).toEqual(['d1'])
     expect(collectPanelIds(s.dock.getState().zones.center.layout)).toEqual(['cv', 'd2', 'ct'])
-    expect(useAppStore.getState().workspaces[0].panels.cv.sidebarOrder).toEqual(['t1', 't2', 'd1'])
+  })
+
+  it('a tab dragged out of a multi-tab window onto the canvas becomes its own window', () => {
+    move(s.ws, 't2', 't1', 'before', ['t1', 't2'])
+    expect(move(s.ws, 't2', 'cv', 'into', ['t2', 't1'])).toBe(true)
+    expect(tabsOf('t1')).toEqual(['t1'])
+    expect(tabsOf('t2')).toEqual(['t2'])
+    expect(s.canvas.getState().nodeForPanel('t2')).not.toBe(s.canvas.getState().nodeForPanel('t1'))
+  })
+
+  it('a lone window dropped on the canvas stays as it is', () => {
+    const node = s.canvas.getState().nodeForPanel('t1')
+    expect(move(s.ws, 't1', 'cv', 'into', ['t1', 't2'])).toBe(true)
+    expect(s.canvas.getState().nodeForPanel('t1')).toBe(node)
+  })
+
+  it('drops a docked panel beside a canvas tab: joins that window at that spot', () => {
+    expect(move(s.ws, 'd1', 't1', 'after', ['t1', 't2'])).toBe(true)
+    expect(tabsOf('t1')).toEqual(['t1', 'd1'])
+    expect(collectPanelIds(s.dock.getState().zones.center.layout)).not.toContain('d1')
   })
 
   it('drags a canvas child out to the dock at a position', () => {
@@ -91,7 +127,6 @@ describe('movePanelInSidebar', () => {
     expect(move(s.ws, 'c2', 'c1', 'before', ['c1', 'c2'])).toBe(true)
     const p = useAppStore.getState().workspaces[0].panels
     expect(collectPanelIds(p.ct.containerLayout)).toEqual(['c2', 'c1'])
-    expect(p.ct.sidebarOrder).toBeUndefined()
   })
 
   it('reordering in a mounted container updates the live store and keeps the active tab', () => {
@@ -130,12 +165,6 @@ describe('movePanelInSidebar', () => {
     expect(move(s.ws, 'd1', 'ct', 'into', ['c1', 'c2'])).toBe(true)
     expect(move(s.ws, 'd2', 'c2', 'after', ['c1', 'c2', 'd1'])).toBe(true)
     expect(collectPanelIds(useAppStore.getState().workspaces[0].panels.ct.containerLayout)).toEqual(['c1', 'c2', 'd2', 'd1'])
-  })
-
-  it('dropping a docked panel beside a canvas child joins that canvas at that spot', () => {
-    expect(move(s.ws, 'd1', 't1', 'after', ['t1', 't2'])).toBe(true)
-    expect(s.canvas.getState().nodeForPanel('d1')).toBeTruthy()
-    expect(useAppStore.getState().workspaces[0].panels.cv.sidebarOrder).toEqual(['t1', 'd1', 't2'])
   })
 
   it('"after" a group row drops OUT of the group, right after the group host', () => {

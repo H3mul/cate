@@ -1,9 +1,9 @@
 // =============================================================================
 // sidebarOrder — pure ordering helpers for the sidebar's panel tree.
 //
-// Top-level rows follow the dock's tab order (so reordering rows reorders the
-// tab tokens, and vice versa). A canvas's children have no tab order, so they
-// follow a sidebar-only list stored on the canvas panel record.
+// Every list follows the real tab order (so reordering rows reorders the tab
+// tokens, and vice versa): the dock's tabs at the top level, a container's
+// layout, and a canvas's windows (creation order, tab order within each).
 // =============================================================================
 
 import type { DockLayoutNode, WindowDockState } from '../../../shared/types'
@@ -27,6 +27,25 @@ export function stackIdByPanel(layout: DockLayoutNode | null | undefined, out: R
   return out
 }
 
+/** A canvas's windows (nodes) in creation order, each a group of tabs: the
+ *  children's order (window by window, tab order within) and child -> window id. */
+export function canvasNodeGroups(
+  nodes: Array<{ id: string; creationIndex?: number; dockLayout: DockLayoutNode | null }>,
+): { order: string[]; nodeOf: Record<string, string> } {
+  const order: string[] = []
+  const nodeOf: Record<string, string> = {}
+  const sorted = nodes
+    .map((node, index) => ({ node, index }))
+    .sort((a, b) => (a.node.creationIndex ?? a.index) - (b.node.creationIndex ?? b.index))
+  for (const { node } of sorted) {
+    for (const id of collectPanelIds(node.dockLayout)) {
+      order.push(id)
+      nodeOf[id] = node.id
+    }
+  }
+  return { order, nodeOf }
+}
+
 /** Stable sort by position in `order`; ids absent from it keep their relative
  *  order after the listed ones. */
 export function sortByOrder<T extends { id: string }>(items: T[], order: readonly string[] | undefined): T[] {
@@ -36,14 +55,4 @@ export function sortByOrder<T extends { id: string }>(items: T[], order: readonl
     .map((item, index) => ({ item, index }))
     .sort((a, b) => (rank.get(a.item.id) ?? Infinity) - (rank.get(b.item.id) ?? Infinity) || a.index - b.index)
     .map(({ item }) => item)
-}
-
-/** `ids` with `id` moved to just before (or after) `refId`; appended at the end
- *  when `refId` is absent. `id` is removed from its old slot first. */
-export function placeInOrder(ids: readonly string[], id: string, refId: string | undefined, after: boolean): string[] {
-  const rest = ids.filter((other) => other !== id)
-  const at = refId ? rest.indexOf(refId) : -1
-  if (at < 0) return [...rest, id]
-  rest.splice(after ? at + 1 : at, 0, id)
-  return rest
 }

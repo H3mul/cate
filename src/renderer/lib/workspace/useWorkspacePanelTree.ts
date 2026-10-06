@@ -23,7 +23,7 @@ import {
 } from './canvasAccess'
 import { collectPanelIds } from '../../../shared/collectPanelIds'
 import { getWorkspaceDockStore } from './dockRegistry'
-import { flattenDockOrder, sortByOrder, stackIdByPanel } from './sidebarOrder'
+import { canvasNodeGroups, flattenDockOrder, sortByOrder, stackIdByPanel } from './sidebarOrder'
 import { partitionWorkspacePanels, buildColdStartCanvasChildOwners } from '../../sidebar/partitionWorkspacePanels'
 import { sortWorkspacePanels } from '../../sidebar/sortWorkspacePanels'
 
@@ -38,7 +38,8 @@ export interface WorkspacePanelTree {
   canvasPanels: PanelState[]
   /** Children grouped by the canvas panel id that hosts them. */
   childrenByCanvas: Record<string, PanelState[]>
-  /** Container children -> the id of the split group (tab stack) they sit in. */
+  /** Child -> the group it sits in: a container's split group (tab stack) or a
+   *  canvas window (node). Consecutive children in different groups get a separator. */
   stackOf: Record<string, string>
   /** Canvas children whose owning canvas is gone and no canvas remains. */
   orphanCanvasChildren: PanelState[]
@@ -157,6 +158,20 @@ export function useWorkspacePanelTree(workspaceId: string): WorkspacePanelTree {
     return owners
   }, [liveCanvasChildOwners, workspaceId, panels])
 
+  // Each canvas's windows: child order (window by window) and child -> window.
+  // Same resolver as the owners above, so it follows live node mini-docks.
+  const canvasGroups = useMemo(() => {
+    const out: Record<string, ReturnType<typeof canvasNodeGroups>> = {}
+    for (const canvasPanelId of getWorkspaceCanvasPanelIds(workspaceId)) {
+      const nodes = Object.values(getCanvasSnapshotForPanel(canvasPanelId)?.nodes ?? {})
+      out[canvasPanelId] = canvasNodeGroups(nodes.map((n) => ({
+        id: n.id, creationIndex: n.creationIndex, dockLayout: getNodeDockLayout(canvasPanelId, n.id),
+      })))
+    }
+    return out
+    // liveCanvasChildOwners changes on every canvas-store / node-dock change.
+  }, [liveCanvasChildOwners, workspaceId])
+
   // The dock-placed id set lets partitioning drop ghosts — panels still in
   // ws.panels but referenced by no canvas or dock. Read live (snapshot
   // resolver); null = unknown (cold start), in which case nothing is filtered so
@@ -168,18 +183,20 @@ export function useWorkspacePanelTree(workspaceId: string): WorkspacePanelTree {
   const { canvasPanels, orphanCanvasChildren, freePanels } = partition
 
   // A container's children follow its layout (tab/split order — the same order
-  // as its tab tokens); a canvas's follow its sidebar-only order list.
+  // as its tab tokens); a canvas's follow its windows (creation order, tab order
+  // within each window).
   const childrenByCanvas: Record<string, PanelState[]> = {}
   for (const [parentId, children] of Object.entries(partition.childrenByCanvas)) {
     const parent = panels[parentId]
     childrenByCanvas[parentId] = sortByOrder(
       children,
-      parent?.type === 'container' ? collectPanelIds(parent.containerLayout) : parent?.sidebarOrder,
+      parent?.type === 'container' ? collectPanelIds(parent.containerLayout) : canvasGroups[parentId]?.order,
     )
   }
 
   const stackOf: Record<string, string> = {}
   for (const p of Object.values(panels)) if (p.type === 'container') stackIdByPanel(p.containerLayout, stackOf)
+  for (const groups of Object.values(canvasGroups)) Object.assign(stackOf, groups.nodeOf)
 
   // Top-level rows follow the dock's tab order.
   const rank = new Map((dockOrder ?? []).map((id, index) => [id, index]))
