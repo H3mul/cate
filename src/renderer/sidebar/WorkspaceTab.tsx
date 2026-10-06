@@ -683,7 +683,7 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
     return (
       <React.Fragment key={cp.id}>
         {renderCanvasRow(cp, children.length > 0, collapsed, depth)}
-        {!collapsed && renderSiblings(children, depth + 1)}
+        {!collapsed && renderSiblings(children, depth + 1, cp.type === 'canvas' && children.length > 0 ? cp : undefined)}
       </React.Fragment>
     )
   }
@@ -695,18 +695,20 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
   // ends). The slot after an expanded group is the "drop out, right after the
   // group" target, drawn at the group host's indent; the slot inside the group
   // after its last member is drawn at the members' indent.
-  const renderSiblings = (items: PanelState[], depth: number): React.ReactNode[] => {
+  // `newWindowOf` (a canvas): its windows are groups too, and a trailing slot after
+  // a separator spawns a new window — the same as dropping on the canvas row.
+  const renderSiblings = (items: PanelState[], depth: number, newWindowOf?: PanelState): React.ReactNode[] => {
     // A container's split tree is a flat list: a static separator sits between
     // members of different split groups, with a drop slot on each side so a row
     // can be dropped into either group.
     const hasMembers = (p: PanelState): boolean => isParentPanel(p) && !isCanvasCollapsed(p.id) && (childrenByCanvas[p.id]?.length ?? 0) > 0
     // Icon column: a parent row's caret sits 16px left of its icon, so its icon lines up with plain rows'.
     const left = (): number => 28 + 12 * depth
-    const slot = (prev: PanelState | undefined, next: PanelState | undefined): React.ReactNode => {
-      const afterGroup = !!prev && hasMembers(prev)
-      const dnd = slotDnd(prev, next, afterGroup)
+    const slot = (prev: PanelState | undefined, next: PanelState | undefined, newWindow?: PanelState): React.ReactNode => {
+      const afterGroup = !newWindow && !!prev && hasMembers(prev)
+      const dnd = slotDnd(prev, next, afterGroup, newWindow)
       return (
-        <div key={`slot:${prev?.id ?? ''}:${next?.id ?? ''}`} className="relative h-0">
+        <div key={newWindow ? `slot:new:${newWindow.id}` : `slot:${prev?.id ?? ''}:${next?.id ?? ''}`} className="relative h-0">
           {/* Spans the gap plus 2px into each neighbour and the full row width, so
               there is no dead pixel between the two rows' midpoints. */}
           <div className="absolute inset-x-0 -top-1 z-10 h-2" {...dnd.handlers}>
@@ -729,6 +731,11 @@ export const WorkspaceTab: React.FC<WorkspaceTabProps> = ({
       out.push(isParentPanel(p) ? renderParentGroup(p, depth) : renderPanelRow(p, depth))
     })
     if (items.length > 0) out.push(slot(items[items.length - 1], undefined))
+    if (newWindowOf && items.length > 0) {
+      out.push(<div key={`split:new:${newWindowOf.id}`} aria-hidden className="h-2" />)
+      out.push(slot(undefined, undefined, newWindowOf))
+      out.push(<div key={`split:end:${newWindowOf.id}`} aria-hidden className="h-2" />) // keeps it clear of the group's own tail slot
+    }
     return out
   }
 

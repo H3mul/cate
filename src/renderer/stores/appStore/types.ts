@@ -97,7 +97,6 @@ export interface AppStoreActions {
   createBrowser: (workspaceId: string, url?: string, position?: Point, placement?: PanelPlacement, proxyUrl?: string) => string
   createEditor: (workspaceId: string, filePath?: string, position?: Point, placement?: PanelPlacement) => string
   createReview: (workspaceId: string, repoPath: string, initial?: Partial<ReviewPanelState>, position?: Point, placement?: PanelPlacement) => string
-  setPanelSidebarOrder: (workspaceId: string, panelId: string, order: string[]) => void
   createCanvas: (workspaceId: string, position?: Point, placement?: PanelPlacement) => string
   /** Creates a container, empty or seeded with one existing panel (already placed 'none'). */
   createContainer: (workspaceId: string, childPanelId?: string, position?: Point, placement?: PanelPlacement) => string

@@ -8,11 +8,11 @@
 // Where it lands depends on the reference row:
 //   - a docked row            → the panel is placed at that spot in the dock's
 //                               tab order (so the tab tokens reorder too);
-//   - a canvas child / canvas → the panel becomes a child of that canvas and its
-//                               sidebar position is recorded in the canvas
-//                               panel's `sidebarOrder`. Reordering within a
-//                               canvas touches ONLY that list — never the nodes,
-//                               z-order or viewport.
+//   - a canvas child          → the panel joins that row's window (canvas node)
+//                               as a tab at that spot. A canvas's windows are
+//                               groups of tabs; windows never change shape.
+//   - a canvas row / the      → `into`: the panel spawns a new window.
+//     trailing slot
 //   - a container child /     → the panel is placed at that spot in the
 //     container                 container's layout, so its tab tokens reorder
 //                               too. It joins the split group (tab stack) of the
@@ -28,12 +28,12 @@ import { useAppStore } from '../../stores/appStore'
 import { removePanelFromTree, createDockStore, type DockStore } from '../../stores/dockStore'
 import { findStackContainingPanel, findStackContainingPanelAcrossZones, findZoneForStack, visitDockTree } from '../../stores/dockTreeUtils'
 import { collectPanelIds } from '../../../shared/collectPanelIds'
+import { getNodeDockStore } from '../../panels/nodeDockRegistry'
 import { containerZones, emptyContainerLayout, getContainerDockStore } from '../../panels/containerDockRegistry'
 import { prepareTerminalRemount } from '../../drag/terminalRemount'
 import { terminalRegistry } from '../terminal/terminalRegistry'
-import { ensureCanvasOpsForPanel, resolvePanelLocation } from './canvasAccess'
+import { ensureCanvasOpsForPanel, getNodeDockLayout, resolvePanelLocation } from './canvasAccess'
 import { getWorkspaceDockStore } from './dockRegistry'
-import { placeInOrder } from './sidebarOrder'
 
 export type SidebarDropZone = 'before' | 'after' | 'into'
 
@@ -160,14 +160,11 @@ export function movePanelInSidebar(move: SidebarMove): boolean {
     const next = layout && removePanelFromTree(layout, panelId)
     app.setPanelContainerLayout(workspaceId, hostId, next || emptyContainerLayout())
   }
-  // Place the panel in a container's layout at the sidebar position: it joins
-  // the reference row's own split group (tab stack), before or after it. The
-  // sidebar draws a separator between groups, so each side of it is its own
-  // drop slot. Works on the live store, or on a scratch store seeded from the
-  // mirrored layout when the container isn't mounted.
-  const placeInContainer = (hostId: string): void => {
-    const live = getContainerDockStore(hostId)
-    const store = live ?? createDockStore({ zones: containerZones(ws.panels[hostId]?.containerLayout ?? emptyContainerLayout()) })
+  // Place the panel in a mini-dock (a container's layout or a canvas window's
+  // tabs) at the sidebar position: it joins the reference row's own group (tab
+  // stack), before or after it. The sidebar draws a separator between groups, so
+  // each side of it is its own drop slot.
+  const placeInMiniDock = (store: StoreApi<DockStore>): void => {
     const layout = store.getState().zones.center.layout
     const siblings = collectPanelIds(layout).filter((id) => id !== panelId)
     const at = refForOrder ? siblings.indexOf(refForOrder) : -1
@@ -183,26 +180,50 @@ export function movePanelInSidebar(move: SidebarMove): boolean {
       store.getState().dockPanel(panelId, 'center', undefined, false)
     }
     restoreActiveTabs(store, activeInStore)
+  }
+  // Live store when mounted, else a scratch store seeded from the persisted
+  // layout whose result is written back.
+  const placeInContainer = (hostId: string): void => {
+    const live = getContainerDockStore(hostId)
+    const store = live ?? createDockStore({ zones: containerZones(ws.panels[hostId]?.containerLayout ?? emptyContainerLayout()) })
+    placeInMiniDock(store)
     if (!live) app.setPanelContainerLayout(workspaceId, hostId, store.getState().zones.center.layout ?? emptyContainerLayout())
   }
+  const placeInNode = (canvasId: string, nodeId: string): void => {
+    const live = getNodeDockStore(canvasId, nodeId)
+    const store = live ?? createDockStore({ zones: containerZones(getNodeDockLayout(canvasId, nodeId) ?? emptyContainerLayout()) })
+    placeInMiniDock(store)
+    const layout = store.getState().zones.center.layout
+    if (!live && layout) ensureCanvasOpsForPanel(canvasId).storeApi.getState().setNodeDockLayout(nodeId, layout)
+  }
+  const leaveSource = (): void => {
+    prepareTerminalRemount(panelId, panel.type, terminalRegistry)
+    if (fromHost) removeFromHost(fromHost)
+    else dock.getState().undockPanel(panelId)
+  }
 
-  if (destHost) {
-    if (fromHost !== destHost.id) {
-      prepareTerminalRemount(panelId, panel.type, terminalRegistry)
-      if (fromHost) removeFromHost(fromHost)
-      else dock.getState().undockPanel(panelId)
-    }
-    if (destHost.type === 'container') {
-      placeInContainer(destHost.id)
+  if (destHost?.type === 'container') {
+    if (fromHost !== destHost.id) leaveSource()
+    placeInContainer(destHost.id)
+  } else if (destHost) {
+    // A canvas: each window (node) is a group of tabs. Dropping beside a row
+    // joins that row's window; windows never change shape. Dropping on the
+    // canvas row / trailing slot ("into") spawns a new window.
+    const canvas = ensureCanvasOpsForPanel(destHost.id).storeApi.getState()
+    const refNode = zone === 'into' || !ref ? null : canvas.nodeForPanel(ref.id)
+    const ownNode = fromHost === destHost.id ? canvas.nodeForPanel(panelId) : null
+    if (refNode && refNode === ownNode) {
+      placeInNode(destHost.id, refNode) // reorder tabs within one window
+    } else if (refNode) {
+      leaveSource()
+      placeInNode(destHost.id, refNode)
     } else {
-      if (fromHost !== destHost.id) {
-        ensureCanvasOpsForPanel(destHost.id).addNodeAndFocus(
-          panelId, panel.type, undefined, { ...PANEL_CANVAS_DROP_SIZES[panel.type] }, false,
-        )
-      }
-      // Sidebar-only: record the order (the canvas itself is untouched on a reorder).
-      const order = placeInOrder(childrenOf(destHost.id).filter((id) => id !== panelId), panelId, refForOrder, after)
-      app.setPanelSidebarOrder(workspaceId, destHost.id, order)
+      // Already alone in its own window: nothing to spawn.
+      if (ownNode && collectPanelIds(getNodeDockLayout(destHost.id, ownNode)).length <= 1) return true
+      leaveSource()
+      ensureCanvasOpsForPanel(destHost.id).addNodeAndFocus(
+        panelId, panel.type, undefined, { ...PANEL_CANVAS_DROP_SIZES[panel.type] }, false,
+      )
     }
   } else {
     // Dock destination: a spot in the reference row's tab stack, or the end.
@@ -224,10 +245,5 @@ export function movePanelInSidebar(move: SidebarMove): boolean {
     restoreActiveTabs(dock, activeBefore)
   }
 
-  // The panel left its old host: drop it from that host's sidebar order.
-  if (fromHost && fromHost !== destHost?.id) {
-    const old = ws.panels[fromHost]?.sidebarOrder
-    if (old?.includes(panelId)) app.setPanelSidebarOrder(workspaceId, fromHost, old.filter((id) => id !== panelId))
-  }
   return true
 }

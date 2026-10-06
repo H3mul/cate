@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { WindowDockState } from '../../../shared/types'
-import { flattenDockOrder, placeInOrder, sortByOrder, stackIdByPanel } from './sidebarOrder'
+import { canvasNodeGroups, flattenDockOrder, sortByOrder, stackIdByPanel } from './sidebarOrder'
 
 const zone = (position: 'left' | 'right' | 'bottom' | 'center', panelIds: string[]) => ({
   position, visible: true, size: 0,
@@ -27,14 +27,6 @@ describe('sortByOrder', () => {
   })
 })
 
-describe('placeInOrder', () => {
-  it('moves before and after a reference, and appends without one', () => {
-    expect(placeInOrder(['a', 'b', 'c'], 'c', 'a', false)).toEqual(['c', 'a', 'b'])
-    expect(placeInOrder(['a', 'b', 'c'], 'a', 'b', true)).toEqual(['b', 'a', 'c'])
-    expect(placeInOrder(['a', 'b'], 'x', undefined, false)).toEqual(['a', 'b', 'x'])
-  })
-})
-
 describe('stackIdByPanel', () => {
   it('maps every panel to its tab stack across a split tree', () => {
     const layout = {
@@ -48,5 +40,17 @@ describe('stackIdByPanel', () => {
     } as never
     expect(stackIdByPanel(layout)).toEqual({ t1: 'a', t2: 'a', t3: 'b', t4: 'c' })
     expect(stackIdByPanel(null)).toEqual({})
+  })
+})
+
+describe('canvasNodeGroups', () => {
+  it('orders windows by creation and maps each tab to its window', () => {
+    const tabs = (id: string, panelIds: string[]) => ({ type: 'tabs', id, panelIds, activeIndex: 0 }) as never
+    const groups = canvasNodeGroups([
+      { id: 'n2', creationIndex: 2, dockLayout: tabs('s2', ['c']) },
+      { id: 'n1', creationIndex: 1, dockLayout: tabs('s1', ['a', 'b']) },
+    ])
+    expect(groups.order).toEqual(['a', 'b', 'c'])
+    expect(groups.nodeOf).toEqual({ a: 'n1', b: 'n1', c: 'n2' })
   })
 })

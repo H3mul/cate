@@ -25,6 +25,7 @@ import {
   unregisterNodeDockStore,
 } from '../../panels/nodeDockRegistry'
 import { createDockStore } from '../../stores/dockStore'
+import { containerZones } from '../../panels/containerDockRegistry'
 import { computeTerminalHasFocus } from '../../hooks/useShortcuts'
 import {
   getOrCreateCanvasStoreForPanel,
@@ -147,6 +148,31 @@ describe('revealPanel', () => {
     expect(ok).toBe(true)
     expect(focusSpy).toHaveBeenCalledWith(nodeId)
     expect(getActivePanelId()).toBe(CHILD)
+  })
+
+  // A node's mini-dock can hold several tabs; revealing a non-active one must
+  // select its tab, not just center the node.
+  const NODE_TABS = { type: 'tabs', id: 'node-stack', panelIds: ['tab-a', 'tab-b'], activeIndex: 0 }
+
+  it('selects the tab of a multiplexed canvas node (unmounted node: persisted layout)', async () => {
+    const store = getOrCreateCanvasStoreForPanel(CANVAS)
+    const nodeId = store.getState().addNode('tab-a', 'terminal')
+    store.getState().setNodeDockLayout(nodeId, NODE_TABS as any)
+    expect(await revealPanel(WS, 'tab-b')).toBe(true)
+    const layout = store.getState().nodes[nodeId].dockLayout as any
+    expect(layout.activeIndex).toBe(1)
+    expect(getActivePanelId()).toBe('tab-b')
+  })
+
+  it('selects the tab of a multiplexed canvas node (mounted node: live mini-dock)', async () => {
+    const store = getOrCreateCanvasStoreForPanel(CANVAS)
+    const nodeId = store.getState().addNode('tab-a', 'terminal')
+    store.getState().setNodeDockLayout(nodeId, NODE_TABS as any)
+    const live = createDockStore({ zones: containerZones(NODE_TABS as any) })
+    registerNodeDockStore(CANVAS, nodeId, live)
+    expect(await revealPanel(WS, 'tab-b')).toBe(true)
+    expect((live.getState().zones.center.layout as any).activeIndex).toBe(1)
+    unregisterNodeDockStore(CANVAS, nodeId)
   })
 
   // Regression: revealing a child of a canvas that is NOT the active center tab
