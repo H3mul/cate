@@ -10,6 +10,7 @@ import React, { useCallback, useState } from 'react'
 import type { PanelState } from '../../shared/types'
 import { canContain } from '../../shared/panels'
 import { canMoveInSidebar, movePanelInSidebar, type SidebarDropZone } from '../lib/workspace/sidebarMove'
+import { revealPanel } from '../lib/workspace/panelReveal'
 
 /** dataTransfer type that marks a sidebar panel-row drag (workspace drags don't carry it). */
 export const SIDEBAR_PANEL_MIME = 'application/x-cate-sidebar-panel'
@@ -65,7 +66,12 @@ export function useSidebarDnd(opts: {
     clear()
     // Apply after the drop handler returns: the move re-parents panels
     // synchronously, and until the handler returns the OS keeps showing the drag ghost.
-    setTimeout(() => movePanelInSidebar({ workspaceId, panelId, refId, zone, childrenOf }), 0)
+    setTimeout(() => {
+      // The dropped panel becomes the active view, as if it had been clicked.
+      if (movePanelInSidebar({ workspaceId, panelId, refId, zone, childrenOf })) {
+        void revealPanel(workspaceId, panelId, { retry: true })
+      }
+    }, 0)
   }, [workspaceId, childrenOf, clear])
 
   const ws = { panels }

@@ -46,7 +46,8 @@ export function createNodesSlice(set: CanvasSet, get: CanvasGet): NodesActions {
       const state = get()
       const defaultSize = size ?? PANEL_DEFAULT_SIZES[panelType]
       // Panel membership is owned solely by each node's dock tree.
-      const existing = Object.values(state.nodes).find((n) => collectPanelIds(n.dockLayout).includes(panelId))
+      // A node on its way out ('exiting') keeps its old layout until finalized — it no longer owns the panel.
+      const existing = Object.values(state.nodes).find((n) => n.animationState !== 'exiting' && collectPanelIds(n.dockLayout).includes(panelId))
       if (existing) {
         const { [existing.id]: _omit, ...otherNodes } = state.nodes
         // No anchor id: existing.id was just excluded from otherNodes, so the
@@ -196,8 +197,10 @@ export function createNodesSlice(set: CanvasSet, get: CanvasGet): NodesActions {
 
     nodeForPanel(panelId) {
       const { nodes } = get()
-      const found = Object.values(nodes).find((n) => collectPanelIds(n.dockLayout).includes(panelId))
-      return found?.id ?? null
+      // A panel pulled out of a window's last tab leaves that node 'exiting' with
+      // its stale layout; the node that now holds the panel wins.
+      const matches = Object.values(nodes).filter((n) => collectPanelIds(n.dockLayout).includes(panelId))
+      return (matches.find((n) => n.animationState !== 'exiting') ?? matches[0])?.id ?? null
     },
 
     sortedNodesByCreationOrder() {

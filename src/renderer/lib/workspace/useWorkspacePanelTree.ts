@@ -163,7 +163,7 @@ export function useWorkspacePanelTree(workspaceId: string): WorkspacePanelTree {
   const canvasGroups = useMemo(() => {
     const out: Record<string, ReturnType<typeof canvasNodeGroups>> = {}
     for (const canvasPanelId of getWorkspaceCanvasPanelIds(workspaceId)) {
-      const nodes = Object.values(getCanvasSnapshotForPanel(canvasPanelId)?.nodes ?? {})
+      const nodes = Object.values(getCanvasSnapshotForPanel(canvasPanelId)?.nodes ?? {}).filter((n) => n.animationState !== 'exiting')
       out[canvasPanelId] = canvasNodeGroups(nodes.map((n) => ({
         id: n.id, creationIndex: n.creationIndex, dockLayout: getNodeDockLayout(canvasPanelId, n.id),
       })))
