@@ -134,6 +134,9 @@ const CanvasNodeWrapper = React.memo(({ nodeId, canvasPanelId, workspaceId, rend
   // Cleanup: drop from module map when this node unmounts
   // ------------------------------------------------------------------
   useEffect(() => {
+    // Register here too: StrictMode's mount → cleanup → mount would otherwise
+    // leave a mounted node unregistered (the useMemo above only runs once).
+    registerNodeDockStore(canvasPanelId, nodeId, dockStoreApi)
     return () => {
       unregisterNodeDockStore(canvasPanelId, nodeId)
     }

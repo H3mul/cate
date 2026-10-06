@@ -14,6 +14,7 @@
 import { getWorkspaceDockStore } from './dockRegistry'
 import {
   ensureCanvasOpsForPanel,
+  getNodeDockLayout,
   resolvePanelLocation,
   type ResolvedPanelLocation,
 } from './canvasAccess'
@@ -22,6 +23,8 @@ import { setActivePanel } from '../activePanel'
 import { findTabStack, findStackContainingPanel } from '../../stores/dockTreeUtils'
 import { replaceInTree } from '../../stores/dockStore'
 import { getContainerDockStore } from '../../panels/containerDockRegistry'
+import { getNodeDockStore } from '../../panels/nodeDockRegistry'
+import { getOrCreateCanvasStoreForPanel } from '../../stores/canvasStore'
 import type { DockZonePosition, PanelState } from '../../../shared/types'
 
 // The location facade now lives in canvasAccess (the lowest module owning dock +
@@ -64,6 +67,21 @@ function revealDockTab(
   return true
 }
 
+/** A canvas node can multiplex panels as tabs in its own mini-dock. Select the
+ *  tab holding `panelId` — on the live mini-dock when the node is mounted, else
+ *  on the node's persisted layout (what it will mount from). */
+function activateNodeTab(canvasPanelId: string, panelId: string): void {
+  const canvas = getOrCreateCanvasStoreForPanel(canvasPanelId).getState()
+  const nodeId = canvas.nodeForPanel(panelId)
+  const layout = nodeId ? getNodeDockLayout(canvasPanelId, nodeId) : null
+  const stack = layout && findStackContainingPanel(layout, panelId)
+  if (!nodeId || !layout || !stack) return
+  const index = stack.panelIds.indexOf(panelId)
+  const live = getNodeDockStore(canvasPanelId, nodeId)
+  if (live) live.getState().setActiveTab(stack.id, index)
+  else canvas.setNodeDockLayout(nodeId, replaceInTree(layout, stack.id, { ...stack, activeIndex: index }))
+}
+
 /** Bring a panel's placement on screen (dock tab / canvas node / container tab),
  *  recursing outward so a panel inside a container inside a canvas is reachable. */
 function revealPlacement(workspaceId: string, panelId: string, depth = 0): boolean {
@@ -78,6 +96,7 @@ function revealPlacement(workspaceId: string, panelId: string, depth = 0): boole
     // DIFFERENT canvas tab is active — so reveal the canvas first, then focus
     // the node inside it.
     revealPlacement(workspaceId, location.canvasPanelId, depth + 1)
+    activateNodeTab(location.canvasPanelId, panelId)
     ensureCanvasOpsForPanel(location.canvasPanelId).focusPanelNode(panelId)
     return true
   }
