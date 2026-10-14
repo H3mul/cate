@@ -23,7 +23,7 @@ export function inheritedCheckout(workspaceId: string, store: CanvasViewStore): 
   const state = store.getState()
   const nodeId = focusedNodeId(state)
   if (!doc || !nodeId) return {}
-  const panelId = activeNodePanelId(state.nodes[nodeId]?.dock, clientStateFor(workspaceId)?.getSnapshot().activeTabs)
+  const panelId = activeNodePanelId(state.nodes[nodeId], clientStateFor(workspaceId)?.getSnapshot())
   const record: PanelRecord | undefined = panelId ? doc.panels[panelId] : undefined
   return inheritWorktree(record, Object.values(doc.worktrees), panelCheckoutHooks)
 }
