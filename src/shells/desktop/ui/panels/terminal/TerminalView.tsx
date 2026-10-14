@@ -17,7 +17,7 @@ import { useClientState, useDocument } from '../../client/document'
 import { useClaimPanelCorner } from '../../client/host/panelChrome'
 import { type PanelViewProps } from '../../client/host/views'
 import { dropFilesInto, isFileDrag } from '../../client/layout/drag'
-import { isCanvasDock, placementOf } from '@workspace/document/contract'
+import { canvasOf } from '@workspace/document/contract'
 import { fsClient } from '@workspace/files/client'
 import type { TerminalOp, TerminalSnapshot } from '@panels/terminal/contract/types'
 import { shouldAdjustTerminalCoords } from './parts/coordAdjust'
@@ -59,8 +59,7 @@ export default function TerminalView({
   useClaimPanelCorner(showSearch)
 
   const canvasId = useDocument(workspaceId, (doc) => {
-    const placement = placementOf(doc, panelId)
-    return placement && isCanvasDock(placement.dock) ? placement.dock.canvasId : null
+    return canvasOf(doc, panelId)
   })
   const zoom = useClientState(workspaceId, (state) => (canvasId ? state.viewports[canvasId]?.zoom ?? 1 : 1))
 
