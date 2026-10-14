@@ -13,7 +13,7 @@ afterEach(() => {
   ws = null
 })
 
-const fixture = () => buildDocument([add('t1', { to: 'stack', dock: { windowId: MAIN_WINDOW }, stackId: 's1' }, 'terminal')])
+const fixture = () => buildDocument([add('t1', { to: 'stack', dock: { layoutId: 'main' }, stackId: 's1' }, 'terminal')])
 const browsers = (w: TestWorkspace) => Object.values(w.confirmed().panels).filter((panel) => panel.type === 'browser')
 
 describe('openUrlFor', () => {
@@ -23,7 +23,7 @@ describe('openUrlFor', () => {
     openUrlFor('w', 'http://localhost:3000/', 't1')
     const [panel] = browsers(ws)
     expect(panel).toBeDefined()
-    expect(placementOf(ws.confirmed(), panel.id)).toMatchObject({ stackId: 's1' })
+    expect(placementOf(ws.confirmed(), panel.id)).toMatchObject({ index: 0 })
     expect(ui.openExternal).not.toHaveBeenCalled()
   })
 
