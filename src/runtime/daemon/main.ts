@@ -70,14 +70,19 @@ async function bridge(rootArg: string): Promise<number> {
     return 1
   }
   process.stdout.write(BRIDGE_READY)
+  // stderr travels to the client's ssh; the file is the remote's own record of why a bridge ended.
+  const root = await canonicalRoot(rootArg)
+  installLogSink(createFileSink({ file: path.join(workspaceDataDir(runtimeIdFromCanonicalRoot(root), os.homedir()), 'logs', 'bridge.log') }))
+  log.info('bridge %d started (parent %d)', process.pid, process.ppid)
   return new Promise((resolve) => {
-    const done = () => resolve(0)
+    const done = (why: string) => { log.info('bridge %d ending: %s', process.pid, why); resolve(0) }
     duplex.onData((bytes) => { process.stdout.write(bytes) })
-    duplex.onClose(done)
+    duplex.onClose((reason) => done(`runtime socket closed${reason ? ` (${reason})` : ''}`))
     process.stdin.on('data', (bytes: Buffer) => duplex.write(new Uint8Array(bytes)))
-    process.stdin.once('end', () => { duplex.close('bridge closed'); done() })
-    process.stdin.once('error', () => { duplex.close('bridge closed'); done() })
-    process.stdout.once('error', () => { duplex.close('bridge closed'); done() })
+    process.stdin.once('end', () => { duplex.close('bridge closed'); done('stdin ended (client closed ssh)') })
+    process.stdin.once('error', (err) => { duplex.close('bridge closed'); done(`stdin error: ${err.message}`) })
+    process.stdout.once('error', (err) => { duplex.close('bridge closed'); done(`stdout error: ${err.message}`) })
+    for (const signal of ['SIGHUP', 'SIGTERM', 'SIGPIPE'] as const) process.once(signal, () => log.info('bridge %d got %s', process.pid, signal))
   })
 }
 
