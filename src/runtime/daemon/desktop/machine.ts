@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { createLogger } from '@kernel/log/contract'
 import type { ByteDuplex } from '@kernel/rpc/contract'
 import {
   BRIDGE_READY,
@@ -354,11 +355,18 @@ export class NotInstalledError extends Error {
   }
 }
 
+const log = createLogger('machine')
+
 /** The command's stdio as a byte pipe, from the bytes after `BRIDGE_READY`. */
 function childDuplex(child: ChildProcessWithoutNullStreams, first: Uint8Array): ByteDuplex {
   let listener: ((bytes: Uint8Array) => void) | null = null
   const pending: Uint8Array[] = first.byteLength ? [first] : []
   let reason: string | undefined
+  let stderr = ''
+  child.stderr.setEncoding('utf-8').on('data', (chunk: string) => { stderr = (stderr + chunk).slice(-1024) })
+  child.once('close', (code, signal) => {
+    log.info('bridge ssh exited (pid %d, code %s, signal %s, closed by us: %s) stderr: %s', child.pid ?? 0, code ?? 'none', signal ?? 'none', reason ?? 'no', stderr.trim() || '(empty)')
+  })
   child.stdout.on('data', (chunk: Buffer) => {
     const bytes = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength)
     if (listener) listener(bytes)
@@ -374,6 +382,7 @@ function childDuplex(child: ChildProcessWithoutNullStreams, first: Uint8Array): 
     onClose: (next) => { child.once('close', () => next(reason)) },
     close: (why) => {
       reason ??= why
+      log.info('closing bridge ssh (pid %d): %s', child.pid ?? 0, why ?? 'no reason')
       child.stdin.end()
       child.kill()
     },

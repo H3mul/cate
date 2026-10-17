@@ -23,6 +23,9 @@ import {
   type SubscribeOptions,
   type Subscription,
 } from '../contract'
+import { createLogger } from '../../log/contract'
+
+const log = createLogger('rpc')
 
 export const DEFAULT_TIMEOUT_MS = 30_000
 const DEFAULT_HELLO_TIMEOUT_MS = 10_000
@@ -308,6 +311,8 @@ export class RpcClient {
   }
 
   private onDisconnect(reason?: string): void {
+    // The reason is otherwise dropped: it is the only trace of who closed the pipe.
+    log.info('connection closed (state %s): %s', this._state, reason ?? 'no reason')
     this.port = null
     this.clearHello(new ConnectionClosedError(reason ? `Runtime connection closed: ${reason}` : undefined))
     if (this._state === 'closed') return

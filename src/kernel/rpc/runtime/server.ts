@@ -23,6 +23,9 @@ import {
   type WireError,
 } from '../contract'
 import type { ClientConnection, LifecycleBus } from '@kernel/lifecycle/runtime'
+import { createLogger } from '@kernel/log/contract'
+
+const log = createLogger('rpc')
 
 export interface ConnectionInfo {
   readonly id: number
@@ -131,9 +134,13 @@ export class RpcServer {
 
   /** Serves one connection until its port closes. */
   serve(port: FramePort): void {
-    const conn = new Connection(this, port, this.nextConnId++)
+    const id = this.nextConnId++
+    const conn = new Connection(this, port, id)
     this.conns.add(conn)
-    port.onClose(() => {
+    const since = Date.now()
+    log.info('connection %d opened', id)
+    port.onClose((reason) => {
+      log.info('connection %d closed after %d s (%s): %s', id, Math.round((Date.now() - since) / 1000), conn.info?.caller ? JSON.stringify(conn.info.caller) : 'no hello', reason ?? 'no reason')
       conn.teardown()
       this.conns.delete(conn)
     })
