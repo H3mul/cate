@@ -129,24 +129,52 @@ describe('WorkspaceList', () => {
       const connection = await list.open(entry.id)
       expect(ids()).toEqual([entry.id, other.id])
 
-      // Closing disconnects it and drops it, from the file too; a paired
-      // one loses its pinned key.
+      // Closing disconnects it and moves it to the history, in the file too;
+      // a paired one keeps its pinned key, so it opens again without a code.
       await list.close(entry.id)
       expect(connection.state.kind).toBe('closed')
       expect(ids()).toEqual([other.id])
+      expect(list.getSnapshot().recent.map((e) => e.id)).toEqual([entry.id])
       expect(list.getSnapshot().open).toEqual([other.id])
       expect((await setup(store)).list.getSnapshot().entries.map((e) => e.id)).toEqual([other.id])
+      expect((await setup(store)).list.getSnapshot().recent.map((e) => e.id)).toEqual([entry.id])
+      if (entry.kind === 'paired') expect(await list.known.get(entry.runtimeId)).toEqual(key)
+
+      // Opening it from the history puts it back in the sidebar.
+      await list.open(entry.id)
+      expect(ids()).toEqual([entry.id, other.id])
+      expect(list.getSnapshot().recent).toEqual([])
+    })
+
+    it(`a ${kind} workspace: forgetting it from the history deletes it`, async () => {
+      const { store, list } = await setup()
+      const entry = await add(list)
+      await list.close(entry.id)
+      await list.forget(entry.id)
+      expect(list.getSnapshot().recent).toEqual([])
+      expect(list.get(entry.id)).toBeUndefined()
+      expect((await setup(store)).list.getSnapshot().recent).toEqual([])
       if (entry.kind === 'paired') expect(await list.known.get(entry.runtimeId)).toBeUndefined()
     })
   }
 
-  it('closing the last one leaves an empty file', async () => {
+  it('lists closed workspaces most recently closed first', async () => {
+    const { list } = await setup()
+    const a = await list.addLocal('/w/a')
+    const b = await list.addLocal('/w/b')
+    await list.close(a.id)
+    await list.close(b.id)
+    expect(list.getSnapshot().entries).toEqual([])
+    expect(list.getSnapshot().recent.map((e) => e.id)).toEqual([b.id, a.id])
+  })
+
+  it('closing the last one leaves it in the history', async () => {
     const { store, list } = await setup()
     const entry = await list.addPaired({ runtimeId: 'RT2', name: 'Box', endpoints: [{ kind: 'connect' }], publicKey: key })
     await list.open(entry.id)
     await list.close(entry.id)
-    expect(await store.get(KNOWN_RUNTIMES_DOCUMENT)).toEqual({ runtimes: {} })
-    expect(await store.get(WORKSPACES_DOCUMENT)).toEqual({ local: [], machine: [], paired: [], order: [] })
+    expect(await store.get(KNOWN_RUNTIMES_DOCUMENT)).toEqual({ runtimes: { RT2: expect.anything() } })
+    expect(await store.get(WORKSPACES_DOCUMENT)).toMatchObject({ paired: [{ runtimeId: 'RT2', closedAt: expect.any(Number) }] })
   })
 
   it('disconnects a workspace another window closed', async () => {

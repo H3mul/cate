@@ -54,7 +54,7 @@ const GROUP_ICONS: Record<SettingsGroup, LucideIcon> = {
   agents: Sparkles,
 }
 
-const NO_WORKSPACES: WorkspaceListSnapshot = { entries: [], open: [] }
+const NO_WORKSPACES: WorkspaceListSnapshot = { entries: [], recent: [], open: [] }
 const noSubscribe = (): (() => void) => () => {}
 
 /** The workspace list's entry for `workspaceId`, to name it. */

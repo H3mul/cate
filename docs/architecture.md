@@ -1718,8 +1718,10 @@ headless.
   on this device: local ones, ones on machines (`{machine, root}`), paired
   workspaces and their pinned keys (`known-runtimes.json`) and the machine
   name their runtime reports (`runtime.info`), sidebar order. A workspace
-  is in it from opening until closing, across restarts; closing one
-  disconnects it and drops it (a paired one with its pinned key); the machine
+  is in the sidebar from opening until closing, across restarts; closing one
+  disconnects it and moves it to the history (`recent`, shown first in the
+  Open picker; a paired one keeps its pinned key); forgetting one deletes it
+  from the history too; the machine
   each workspace lives on (`machineOf`, `groupByMachine`) for lists grouped
   by machine;
   joining with a code (`joinWorkspace`); and the trust question

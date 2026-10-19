@@ -29,13 +29,13 @@ describe('selectionAfter', () => {
 describe('reconcileWindow', () => {
   it('keeps a state that names only listed workspaces, as it is', () => {
     const state = { selected: 'a', share: 'a' }
-    expect(reconcileWindow(state, { entries: [entry('a')], open: ['a'] })).toBe(state)
+    expect(reconcileWindow(state, { entries: [entry('a')], recent: [], open: ['a'] })).toBe(state)
     const none = { selected: null, share: null }
-    expect(reconcileWindow(none, { entries: [], open: [] })).toBe(none)
+    expect(reconcileWindow(none, { entries: [], recent: [], open: [] })).toBe(none)
   })
 
   it('moves off a removed selection and closes a dialog about a removed workspace', () => {
-    expect(reconcileWindow({ selected: 'a', share: 'a' }, { entries: [entry('b')], open: ['b'] })).toEqual({ selected: 'b', share: null })
-    expect(reconcileWindow({ selected: 'a', share: null }, { entries: [], open: [] })).toEqual({ selected: null, share: null })
+    expect(reconcileWindow({ selected: 'a', share: 'a' }, { entries: [entry('b')], recent: [], open: ['b'] })).toEqual({ selected: 'b', share: null })
+    expect(reconcileWindow({ selected: 'a', share: null }, { entries: [], recent: [], open: [] })).toEqual({ selected: null, share: null })
   })
 })

@@ -16,7 +16,7 @@ const entries: WorkspaceEntry[] = [
 ]
 
 function fakeList() {
-  let snapshot: WorkspaceListSnapshot = { entries, open: [] }
+  let snapshot: WorkspaceListSnapshot = { entries, recent: [], open: [] }
   const listeners = new Set<() => void>()
   const list = {
     getSnapshot: () => snapshot,
@@ -65,7 +65,7 @@ afterEach(() => {
 
 describe('Sidebar', () => {
   it('with no workspaces, the list stays as it is: no headers, nothing in their place', () => {
-    const none: WorkspaceListSnapshot = { entries: [], open: [] }
+    const none: WorkspaceListSnapshot = { entries: [], recent: [], open: [] }
     const empty = { ...list, getSnapshot: () => none }
     installClientApp({
       workspaces: empty as unknown as WorkspaceList,

@@ -1,24 +1,27 @@
-// "Open…": one list of everywhere a workspace can come from: this device
-// (a folder picker), saved SSH machines, the hosts of the SSH config, WSL
-// distros and adding one by its ssh command; then joining a workspace on
-// another device with a code. Typing filters; arrows and Enter pick. A saved
-// machine is removed from its row. The Open dialog shows it.
+// "Open…": one list of everywhere a workspace can come from: closed ones
+// from the history (first), this device (a folder picker), saved SSH
+// machines, the hosts of the SSH config, WSL distros and adding one by its
+// ssh command; then joining a workspace on another device with a code.
+// Typing filters; arrows and Enter pick. A saved machine or a history entry
+// is removed from its row. The Open dialog shows it.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { KeyRound, Monitor, Plus, Server, X } from 'lucide-react'
+import { History, KeyRound, Monitor, Plus, Server, X } from 'lucide-react'
 import { clientUi } from '@kernel/interaction'
 import { inputCls } from '../../kernel/interaction'
 import { useClientSetting } from '../../kernel/settings'
 import { formatSshTarget, parseSshCommand, type Machine, type SshConfigHost } from '@runtime/daemon/contract'
+import { workspaceLocation } from '@client/workspaces'
+import { useWorkspaceList } from '../../client/workspaces'
 import { clientApp } from '../app'
 import { useDesktopPort } from '../desktop'
-import { openLocalFolder } from '../navigation'
+import { forgetWorkspace, openLocalFolder, selectWorkspace } from '../navigation'
 import { useUIStore } from '../state/uiStore'
 import { forgetMachine } from './machines'
 
 interface PickerItem {
   key: string
-  section: 'Machines' | 'Other devices'
+  section: 'Recent' | 'Machines' | 'Other devices'
   /** Shown whatever is typed (adding a machine, joining). */
   always?: boolean
   icon: ReactNode
@@ -41,6 +44,7 @@ export function WorkspacePicker({ autoFocus = false, onPicked, listClassName = '
   const port = useDesktopPort()
   const setup = app.machines
   const saved = useClientSetting('sshMachines')
+  const { recent } = useWorkspaceList(app.workspaces)
   const [hosts, setHosts] = useState<SshConfigHost[]>([])
   const [distros, setDistros] = useState<string[]>([])
   const [query, setQuery] = useState('')
@@ -75,7 +79,20 @@ export function WorkspacePicker({ autoFocus = false, onPicked, listClassName = '
     const q = query.trim().toLowerCase()
     const matches = (...words: (string | undefined)[]) => !q || words.some((w) => w?.toLowerCase().includes(q))
 
-
+    for (const entry of recent) {
+      const location = workspaceLocation(entry)
+      if (!matches(entry.name, location ?? undefined, entry.kind === 'paired' ? entry.machineName : undefined)) continue
+      out.push({
+        key: `recent:${entry.id}`,
+        section: 'Recent',
+        icon: <History size={14} />,
+        label: entry.name,
+        detail: location ?? (entry.kind === 'paired' ? entry.machineName ?? 'Paired device' : undefined),
+        hint: 'Open',
+        run: () => { onPicked?.(); void selectWorkspace(entry.id) },
+        remove: () => void forgetWorkspace(entry.id),
+      })
+    }
     if (port && matches('This device', 'local folder')) {
       out.push({ key: 'this', section: 'Machines', icon: <Monitor size={14} />, label: 'This device', hint: 'Open workspace…', run: () => void pickFolder() })
     }
@@ -102,7 +119,7 @@ export function WorkspacePicker({ autoFocus = false, onPicked, listClassName = '
       out.push({ key: 'join', section: 'Other devices', always: true, icon: <KeyRound size={14} />, label: 'Join with a code…', run: () => ui.openJoinDialog() })
     }
     return out
-  }, [hosts, distros, saved, query, port, setup, onPicked, app])
+  }, [hosts, distros, saved, recent, query, port, setup, onPicked, app])
 
   useEffect(() => { setActive(0) }, [query])
   useEffect(() => {
