@@ -42,7 +42,7 @@ export {
   type ScreenCorner,
 } from './state/uiState'
 export { useTerminalStatuses } from './state/statusStore'
-export { WindowIdContext, useWindowId } from './state/windowContext'
+export { WindowIdContext, setShownWindowId, shownWindow, useWindowId } from './state/windowContext'
 
 // Navigation and actions.
 export {
@@ -53,7 +53,6 @@ export {
   revealPanel,
   closePanels,
   renamePanel,
-  detachPanel,
   openUrl,
   installNavigationHooks,
 } from './navigation'

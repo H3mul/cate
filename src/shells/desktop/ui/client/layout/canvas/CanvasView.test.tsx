@@ -67,7 +67,7 @@ describe('CanvasView', () => {
     act(() => node.querySelector<HTMLButtonElement>('[aria-label="Move into Dock"]')!.click())
     await frames()
     const doc = documentStoreFor('ws')!.getSnapshot()
-    expect(doc.windows.main.dock).toMatchObject({ kind: 'stack', id: 'main-stack', panels: ['canvas-panel', 'p1'] })
+    expect(doc.windows.main.layouts[0].dock).toMatchObject({ kind: 'stack', id: 'main-stack', panels: ['canvas-panel', 'p1'] })
     expect(doc.canvases.c1.nodes.n1).toBeUndefined()
     expect(clientStateFor('ws')!.getSnapshot().focusedPanelId).toBe('p1')
   })
