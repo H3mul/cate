@@ -171,7 +171,7 @@ export function useDockTabActions({ workspaceId, dock, host, stack, activePanelI
       ...(showCloseAll ? [{ id: 'close-all', label: 'Close All' }] : []),
       { type: 'separator' },
       { id: 'split-right', label: 'Split Right', enabled: canSplit?.() ?? true },
-      ...(isCanvasDock(dock) ? [{ id: 'move-dock', label: 'Move into Dock', accelerator: actionAccelerator('moveIntoDock') }] : []),
+      ...(isNodeHost(host) ? [{ id: 'move-dock', label: 'Move into Dock', accelerator: actionAccelerator('moveIntoDock') }] : []),
       { id: 'move-window', label: 'Move into New Window' },
     ]
     const id = await showMenu(menu)
@@ -189,7 +189,7 @@ export function useDockTabActions({ workspaceId, dock, host, stack, activePanelI
     for (const contribution of tabMenuContributions()) {
       if (await contribution.run(id, context)) return
     }
-  }, [showMultiSelectionMenu, workspaceId, dock, stack.panels, showCloseAll, canSplit, beginRename, closeOne, closeMany, splitPanel, moveTabToNewWindow])
+  }, [showMultiSelectionMenu, workspaceId, host, stack.panels, showCloseAll, canSplit, beginRename, closeOne, closeMany, splitPanel, moveTabToNewWindow])
 
   const handleTabBarContextMenu = useCallback(async (e: React.MouseEvent) => {
     if (e.target !== e.currentTarget) return

@@ -75,11 +75,8 @@ export function toggleExpandedPane(workspaceId: string): boolean {
   const host = doc && leaf ? hostOfPanel(doc, leaf) : null
   if (!doc || !state || !placement || !host) return false
   const current = state.getSnapshot()
-  if (isNodeHost(host)) {
-    state.setMaximizedNode(host.canvasId, current.maximizedNodes[host.canvasId] === host.nodeId ? null : host.nodeId)
-    state.focus(leaf)
-    return true
-  }
+  // A canvas node does not maximize: its tab moves into the dock instead.
+  if (isNodeHost(host)) return false
   const expanded = current.maximizedStacks[host.windowId] === placement.stackId
   if (!expanded && dockOf(doc, placement.dock)?.kind !== 'split') return false
   state.setMaximizedStack(host.windowId, expanded ? null : placement.stackId)

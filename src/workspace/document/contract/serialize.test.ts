@@ -73,7 +73,7 @@ describe('selectors', () => {
 
   it('places a canvas panel\'s tab beside its canvas panel in the dock', () => {
     const doc = sample()
-    expect(dockTargetOf(doc, 'y')).toEqual({ to: 'stack', dock: { windowId: 'w1' }, stackId: 'sw', after: 'cv2' })
+    expect(dockTargetOf(doc, 'y')).toEqual({ to: 'stack', dock: { layoutId: 'w1-main' }, stackId: 'sw', after: 'cv2' })
     expect(dockTargetOf(doc, 'a')).toBeNull()
   })
 

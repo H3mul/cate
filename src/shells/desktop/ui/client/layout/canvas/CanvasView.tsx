@@ -60,14 +60,6 @@ function CanvasNodes({ workspaceId, canvasId, canvasPanelId, store }: CanvasView
   )
 }
 
-/** The dock of the maximized node: the layout this client shows in it. */
-function MaximizedNodeDock({ workspaceId, canvasId, nodeId }: { workspaceId: string; canvasId: string; nodeId: NodeId }) {
-  const layouts = useDocument(workspaceId, (d) => d.canvases[canvasId]?.nodes[nodeId]?.layouts)
-  const chosen = useClientState(workspaceId, (s) => s.activeLayouts[nodeId])
-  const layoutId = layouts?.find((l) => l.id === chosen)?.id ?? layouts?.[0]?.id
-  return layoutId ? <DockView workspaceId={workspaceId} dock={{ layoutId }} host={{ canvasId, nodeId }} /> : null
-}
-
 export function CanvasView({ workspaceId, canvasId, canvasPanelId }: CanvasViewProps): React.ReactElement | null {
   const exists = useDocument(workspaceId, (d) => !!d.canvases[canvasId])
   // eslint-disable-next-line react-hooks/exhaustive-deps
