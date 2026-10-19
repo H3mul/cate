@@ -20,3 +20,15 @@ it('reports whether git ignores every changed path', async () => {
     await fs.rm(repo, { recursive: true, force: true })
   }
 })
+
+it('survives git exiting before it reads a large check-ignore input', async () => {
+  // Not a repository: git fails at startup, before it reads stdin. The input is
+  // bigger than the pipe buffer, so the write meets the closed pipe.
+  const notRepo = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'cate-not-repo-')))
+  try {
+    const paths = Array.from({ length: 5000 }, (_, i) => path.join(notRepo, `some/long/path/file-${i}.txt`))
+    await expect(testGitHost().allIgnored({ cwd: notRepo, paths })).resolves.toBe(false)
+  } finally {
+    await fs.rm(notRepo, { recursive: true, force: true })
+  }
+})

@@ -16,7 +16,9 @@ import type {
   VcsCapability,
 } from '../contract'
 import { NotARepositoryError, githubRepositoryUrl, parseReviewPatch } from '../contract'
+import { createLogger } from '@kernel/log/contract'
 
+const log = createLogger('git')
 const execFileAsync = promisify(execFile)
 /** The daemon has no console on Windows: without `windowsHide` every git and
  *  gh call would flash a console window. */
@@ -109,10 +111,15 @@ export interface GitHostDeps {
 
 function gitBuffer(cwd: string, args: string[], env: NodeJS.ProcessEnv, input?: Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => {
-    const child = execFile('git', ['-C', cwd, ...args], { env, encoding: 'buffer', maxBuffer: REVIEW_CONTENT_MAX_BYTES, timeout: GIT_TIMEOUT_MS, windowsHide: true }, (error, stdout) => {
-      if (error) reject(error)
+    const child = execFile('git', ['-C', cwd, ...args], { env, encoding: 'buffer', maxBuffer: REVIEW_CONTENT_MAX_BYTES, timeout: GIT_TIMEOUT_MS, windowsHide: true }, (error, stdout, stderr) => {
+      // git's own words ('fatal: not a git repository') are the part the error message lacks.
+      if (error) reject(Object.assign(error, { stderr: stderr.toString().trim() }))
       else resolve(Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout))
     })
+    // git can exit before it reads its input (a bad argument, not a repository):
+    // the write then meets a closed pipe. Nothing else listens to stdin, so the
+    // error would be thrown uncaught. The exec callback still reports git's exit.
+    child.stdin?.on('error', (err: NodeJS.ErrnoException) => log.warn('git %s: input not read (%s), git exited first', args[0], err.code ?? err.message))
     if (input !== undefined) child.stdin?.end(input)
   })
 }
@@ -906,8 +913,10 @@ export function createGitHost(deps: GitHostDeps): GitHost {
       let out: Buffer
       try {
         out = await gitBuffer(await dir(cwd), ['check-ignore', '--stdin', '-z'], env(), Buffer.from(paths.join('\0') + '\0'))
-      } catch {
-        // Exit 1: none ignored. Anything else (not a repo, git failed): treat as a change.
+      } catch (err) {
+        // Exit 1: none ignored. Anything else (not a repo, git failed): treat as a change, and say why.
+        const code = (err as { code?: unknown }).code
+        if (code !== 1) log.warn('git check-ignore failed (%s), treating %d path(s) as changed (first: %s): %s; stderr: %s', code ?? 'no code', paths.length, paths.slice(0, 3).join(', '), (err as Error).message, (err as { stderr?: string }).stderr || '(empty)')
         return false
       }
       return new Set(out.toString('utf-8').split('\0').filter(Boolean)).size >= new Set(paths).size

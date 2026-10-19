@@ -119,6 +119,8 @@ async function serve(args: ServeArgs): Promise<number> {
   process.on('unhandledRejection', (reason) => log.error('unhandledRejection: %O', reason))
   let crashed = false
   process.on('uncaughtException', (error) => {
+    // A write to a peer that already went away is one connection's loss, not the runtime's.
+    if ((error as NodeJS.ErrnoException).code === 'EPIPE') return void log.warn('uncaught EPIPE ignored: %s', error.message)
     log.error('uncaughtException: %O', error)
     crashed = true
     void daemon.stop({ kind: 'signal' })
