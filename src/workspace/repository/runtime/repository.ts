@@ -174,7 +174,9 @@ export function createRepositoryRuntime(deps: RepositoryRuntimeDeps): Repository
     probe: (cwd) => raw.probe({ cwd }),
     snapshot,
     watch: deps.watch,
-    allIgnored: gated((cwd: string, paths: string[]) => raw.allIgnored({ cwd, paths })),
+    // Outside a repository there are no ignore rules: skip the git call. isRepo is a
+    // file check, so a repository made later is seen on the next batch.
+    allIgnored: gated(async (cwd: string, paths: string[]) => (await raw.isRepo({ cwd })) ? raw.allIgnored({ cwd, paths }) : false),
     active: () => trust.isTrusted(),
     log: deps.log,
     onSnapshot: (cwd, status) => {
