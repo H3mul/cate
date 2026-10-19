@@ -1,8 +1,7 @@
 // Moving between workspaces: selecting one opens its connection (and asks for
-// trust the first time), closing one disconnects it and drops it from the
-// list. Revealing and closing
-// panels are client/host's; this module plugs workspace selection and window
-// raising into its reveal hooks.
+// trust the first time), closing one disconnects it and moves it to the
+// history. Revealing and closing panels are client/host's; this module plugs
+// workspace selection and window raising into its reveal hooks.
 
 import { byMachine, openTrusted, reconcileWindow } from '@client/workspaces'
 import { documentStoreFor } from '@client/document'
@@ -46,18 +45,13 @@ export async function pickAndOpenFolder(): Promise<boolean> {
 }
 
 /** Closes workspaces: disconnects this client (the runtime follows
- *  `runtimeLifetime`) and drops them from the list. Paired ones ask first,
- *  once, since opening one again takes a new code. When the shown one is
- *  closed, its nearest neighbour left in the list shows next. */
+ *  `runtimeLifetime`) and moves them from the sidebar to the history. When
+ *  the shown one is closed, its nearest neighbour left in the sidebar shows
+ *  next. */
 export async function closeWorkspaces(workspaceIds: readonly string[]): Promise<boolean> {
   const { workspaces } = clientApp()
   const closing = workspaceIds.map((id) => workspaces.get(id)).filter((e) => e !== undefined)
   if (closing.length === 0) return false
-  const paired = closing.filter((e) => e.kind === 'paired')
-  if (paired.length > 0) {
-    const what = paired.length === 1 ? `"${paired[0].name}"` : `${paired.length} paired workspaces`
-    if (!await clientUi().confirm(`Close ${what}? To open ${paired.length === 1 ? 'it' : 'one'} again, this device needs a new code from the device it is on.`)) return false
-  }
   const ids = new Set(closing.map((e) => e.id))
   const { entries } = workspaces.getSnapshot()
   const shown = useUIStore.getState().selectedWorkspaceId
@@ -81,6 +75,26 @@ export async function closeWorkspaces(workspaceIds: readonly string[]): Promise<
 /** Closes one workspace (see `closeWorkspaces`). */
 export function closeWorkspace(workspaceId: string): Promise<boolean> {
   return closeWorkspaces([workspaceId])
+}
+
+/** Deletes a workspace from the history, after asking. A paired one also
+ *  loses its pinned key, so opening it again takes a new code. */
+export async function forgetWorkspace(workspaceId: string): Promise<boolean> {
+  const { workspaces } = clientApp()
+  const entry = workspaces.get(workspaceId)
+  if (!entry) return false
+  const paired = entry.kind === 'paired'
+  const prompt = paired
+    ? `Forget "${entry.name}"? To open it again, this device needs a new code from the device it is on.`
+    : `Forget "${entry.name}"?`
+  if (!await clientUi().confirm(prompt)) return false
+  try {
+    await workspaces.forget(workspaceId)
+    return true
+  } catch (err) {
+    clientUi().showError(errorMessage(err, `Could not forget ${entry.name}`))
+    return false
+  }
 }
 
 /** Reconnects open workspaces: their documents and sessions load again

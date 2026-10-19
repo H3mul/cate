@@ -34,6 +34,7 @@ beforeEach(() => {
   installClientApp({
     workspaces: fakeWorkspaces({
       entries: [{ kind: 'local', id: 'local:/p/cate', root: '/p/cate', name: 'cate', lastOpenedAt: 1 }],
+      recent: [],
       open: [],
     }),
     connections: {} as ClientApp['connections'],

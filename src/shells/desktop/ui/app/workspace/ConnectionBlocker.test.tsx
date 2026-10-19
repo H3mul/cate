@@ -29,7 +29,7 @@ function fakeConnection(state: ConnectionState) {
 }
 
 const close = vi.fn(async () => {})
-const getSnapshot = () => ({ entries: [], open: [] })
+const getSnapshot = () => ({ entries: [], recent: [], open: [] })
 
 function mount(connection: ReturnType<typeof fakeConnection>) {
   installClientApp({
