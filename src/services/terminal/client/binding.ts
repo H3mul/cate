@@ -38,6 +38,9 @@ export interface BindTerminalOptions {
   size?: () => { cols: number; rows: number }
   /** The PTY's grid: before the screen is written, and on every change. */
   onSize?: (size: { cols: number; rows: number }) => void
+  /** The attach's screen has been written and parsed: the terminal shows the
+   *  PTY's screen (on the first attach, and after each re-attach). */
+  onScreen?: () => void
   /** The PTY exited; the screen stays. */
   onExit?: (code: number) => void
   /** The attach failed (the terminal is gone, the connection refused). */
@@ -78,7 +81,8 @@ export function bindTerminal(options: BindTerminalOptions): TerminalBinding {
         viewer = event.viewer
         options.onSize?.({ cols: event.cols, rows: event.rows })
         terminal.reset()
-        if (event.data) terminal.write(event.data)
+        if (event.data) terminal.write(event.data, () => options.onScreen?.())
+        else options.onScreen?.()
         // The view may have been resized while the attach was in flight.
         view()
       } else if (event.kind === 'size') {

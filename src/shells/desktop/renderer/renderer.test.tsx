@@ -59,6 +59,7 @@ vi.mock('@xterm/xterm', () => ({
     focus() {}
     onData() { return { dispose() {} } }
     onResize() { return { dispose() {} } }
+    onScroll() { return { dispose() {} } }
     onTitleChange() { return { dispose() {} } }
     onSelectionChange() { return { dispose() {} } }
     resize() {}

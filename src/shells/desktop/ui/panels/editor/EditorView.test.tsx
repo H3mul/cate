@@ -42,6 +42,7 @@ vi.mock('monaco-editor', () => {
         const editor = {
           getModel: () => current, setModel: (m: any) => { current = m }, layout: vi.fn(), focus: vi.fn(), dispose: vi.fn(),
           updateOptions: vi.fn(), revealLineInCenter: vi.fn(), setPosition: vi.fn(),
+          saveViewState: vi.fn(() => ({ scroll: 42 })), restoreViewState: vi.fn(),
         }
         h.editors.push(editor)
         return editor
@@ -189,6 +190,16 @@ describe('EditorView', () => {
     expect(h.bindings[0].text.toString()).toBe('const a = 1')
     expect(h.editors[0].getModel().getValue()).toBe('const a = 1')
     expect(host.querySelector('[data-testid="code-editor"]')!.classList.contains('hidden')).toBe(false)
+  })
+
+  it('restores a file\'s scroll and cursor when its view mounts again', async () => {
+    await show(snapshotOf())
+    expect(h.editors[0].restoreViewState).not.toHaveBeenCalled()
+    // A tab switch unmounts the view; the editor's state goes to client state on the way out.
+    await act(async () => root.unmount())
+    root = createRoot(host)
+    await show(snapshotOf())
+    expect(h.editors[1].restoreViewState).toHaveBeenCalledWith({ scroll: 42 })
   })
 
   it('previews markdown from the buffer and toggles the source for this client only', async () => {

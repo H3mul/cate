@@ -97,6 +97,11 @@ export default function EditorView({ workspaceId, panelId, record, send: sendOp,
     if (editor) revealLine(editor, reveal.line, reveal.column)
     else pendingReveal.current = reveal
   }, [])
+  // A file's scroll and cursor come back when its editor binds again (a tab
+  // switch unmounts the view), so they live in client state, keyed by file.
+  const codeViewKey = `code:${filePath}`
+  const loadCodeView = useCallback(() => (clientStateFor(workspaceId)?.getSnapshot().panelViews[panelId]?.[codeViewKey] ?? null) as monaco.editor.ICodeEditorViewState | null, [workspaceId, panelId, codeViewKey])
+  const saveCodeView = useCallback((state: monaco.editor.ICodeEditorViewState) => clientStateFor(workspaceId)?.setPanelView(panelId, codeViewKey, state), [workspaceId, panelId, codeViewKey])
   const onEditor = useCallback((editor: monaco.editor.IStandaloneCodeEditor | null) => {
     editorRef.current = editor
     if (editor && pendingReveal.current) {
@@ -358,7 +363,16 @@ export default function EditorView({ workspaceId, panelId, record, send: sendOp,
           )}
           {textual && !error && (loading || !text) && <LoadingState label="Loading file" className="absolute inset-0 z-20 bg-surface-1 text-sm" />}
           {textual && filePath && (
-            <CodeEditor panelId={panelId} filePath={filePath} text={text} font={font} hidden={mode !== 'code' || !!error} onEditor={onEditor} />
+            <CodeEditor
+              panelId={panelId}
+              filePath={filePath}
+              text={text}
+              font={font}
+              hidden={mode !== 'code' || !!error}
+              onEditor={onEditor}
+              loadView={loadCodeView}
+              saveView={saveCodeView}
+            />
           )}
         </div>
         {root && (

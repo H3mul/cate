@@ -17,6 +17,10 @@ export interface CodeEditorProps {
   hidden?: boolean
   /** The editor instance, once created and bound; null when gone. */
   onEditor?: (editor: monaco.editor.IStandaloneCodeEditor | null) => void
+  /** The view state (scroll, cursor, folds) this file left last time; applied when it binds. */
+  loadView?: () => monaco.editor.ICodeEditorViewState | null
+  /** Called with the view state when the file unbinds or the editor goes away. */
+  saveView?: (state: monaco.editor.ICodeEditorViewState) => void
 }
 
 export function revealLine(editor: monaco.editor.IStandaloneCodeEditor, line: number, column?: number | null): void {
@@ -27,11 +31,20 @@ export function revealLine(editor: monaco.editor.IStandaloneCodeEditor, line: nu
   } catch { /* a line beyond the end */ }
 }
 
-export function CodeEditor({ panelId, filePath, text, font, hidden, onEditor }: CodeEditorProps) {
+export function CodeEditor({ panelId, filePath, text, font, hidden, onEditor, loadView, saveView }: CodeEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const onEditorRef = useRef(onEditor)
   onEditorRef.current = onEditor
+  const loadViewRef = useRef(loadView)
+  loadViewRef.current = loadView
+  const saveViewRef = useRef(saveView)
+  saveViewRef.current = saveView
+  // Runs before a model goes or the editor is disposed; a no-op once the editor is gone.
+  const saveCurrentView = () => {
+    const state = editorRef.current?.saveViewState()
+    if (state) saveViewRef.current?.(state)
+  }
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -62,6 +75,7 @@ export function CodeEditor({ panelId, filePath, text, font, hidden, onEditor }: 
     return () => {
       offTheme()
       observer.disconnect()
+      saveCurrentView()
       onEditorRef.current?.(null)
       editor.dispose()
       editorRef.current = null
@@ -84,8 +98,11 @@ export function CodeEditor({ panelId, filePath, text, font, hidden, onEditor }: 
     const model = monaco.editor.createModel('', detectLanguage(filePath), uri)
     const binding = new MonacoBinding(text, model, new Set([editor]))
     editor.setModel(model)
+    const saved = loadViewRef.current?.()
+    if (saved) editor.restoreViewState(saved)
     onEditorRef.current?.(editor)
     return () => {
+      saveCurrentView()
       onEditorRef.current?.(null)
       binding.destroy()
       editor.setModel(null)

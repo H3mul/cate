@@ -27,9 +27,12 @@ import { holdFocus } from './parts/holdFocus'
 import { terminalOptions, terminalViewSettings, useTerminalOptions } from './parts/settings'
 import { useTerminalGrid } from './parts/grid'
 import { createTerminalXterm, type TerminalXterm } from './parts/xterm'
+import { SCROLL_VIEW_KEY, lineToRestore, linesFromBottom } from './parts/viewState'
 import { registerTerminalView } from './tabMenu'
 
 const interacting = () => document.body.classList.contains('canvas-interacting')
+/** Scroll position is saved this long after the viewport last moved. */
+const SCROLL_SAVE_MS = 150
 
 export default function TerminalView({
   workspaceId,
@@ -47,6 +50,9 @@ export default function TerminalView({
   const renderBoxRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<TerminalXterm | null>(null)
   const bindingRef = useRef<TerminalBinding | null>(null)
+  // Scroll is tracked once the replayed screen is in, and restored on that first screen only.
+  const scrollTracked = useRef(false)
+  const viewRestored = useRef(false)
   const snapshotRef = useRef(snapshot)
   snapshotRef.current = snapshot
   const [ready, setReady] = useState(false)
@@ -89,6 +95,24 @@ export default function TerminalView({
     })
     xterm.open(renderBox)
     xtermRef.current = xterm
+    // Remember how far up the viewport is, so a remount can put it back. Not
+    // before the first screen is in: the replay itself moves the viewport.
+    scrollTracked.current = false
+    viewRestored.current = false
+    let savedScroll: number | undefined
+    const saveScroll = () => {
+      if (!scrollTracked.current) return
+      const lines = linesFromBottom(xterm.terminal.buffer.active)
+      // Output at the bottom moves the viewport on every chunk; only a change is news.
+      if (lines === savedScroll) return
+      savedScroll = lines
+      clientStateFor(workspaceId)?.setPanelView(panelId, SCROLL_VIEW_KEY, lines)
+    }
+    let scrollTimer: ReturnType<typeof setTimeout> | null = null
+    const scrollSub = xterm.terminal.onScroll(() => {
+      if (scrollTimer) clearTimeout(scrollTimer)
+      scrollTimer = setTimeout(saveScroll, SCROLL_SAVE_MS)
+    })
     const unregister = registerTerminalView(workspaceId, panelId, {
       resetRendering: () => xterm.resetRendering(),
     })
@@ -97,6 +121,10 @@ export default function TerminalView({
     return () => {
       setReady(false)
       offTheme()
+      if (scrollTimer) clearTimeout(scrollTimer)
+      saveScroll()
+      scrollSub.dispose()
+      scrollTracked.current = false
       unregister()
       xtermRef.current = null
       xterm.dispose()
@@ -116,6 +144,15 @@ export default function TerminalView({
       process: processProxy,
       id: ptyId,
       visible,
+      // The first screen of a mount: put the viewport back.
+      onScreen: () => {
+        if (viewRestored.current) return
+        viewRestored.current = true
+        const saved = clientStateFor(workspaceId)?.getSnapshot().panelViews[panelId]?.[SCROLL_VIEW_KEY]
+        const line = lineToRestore(xterm.terminal.buffer.active, saved)
+        if (line !== null) xterm.terminal.scrollToLine(line)
+        scrollTracked.current = true
+      },
       ...grid.bindingOptions(xterm),
     })
     bindingRef.current = binding

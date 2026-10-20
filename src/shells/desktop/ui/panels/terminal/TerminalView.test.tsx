@@ -63,6 +63,7 @@ vi.mock('@xterm/xterm', () => ({
     input(data: string) { for (const l of this.data) l(data) }
     onData(l: (data: string) => void) { this.data.add(l); return { dispose: () => this.data.delete(l) } }
     onResize() { return { dispose() {} } }
+    onScroll() { return { dispose() {} } }
     resize(cols: number, rows: number) { this.cols = cols; this.rows = rows }
     refresh() {}
     scrollToBottom() {}
